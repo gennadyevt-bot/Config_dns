@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
+import android.widget.ToggleButton
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -24,41 +26,26 @@ class AppVpnActivity : AppCompatActivity() {
 
     private lateinit var rvApps: RecyclerView
     private lateinit var btnSave: Button
+    private lateinit var tvMode: TextView
+    private lateinit var toggleMode: ToggleButton
     private lateinit var appVpnStorage: AppVpnStorage
     private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
+    private val excludedPackages = mutableSetOf<String>()
+    private var isVpnMode = true // true = VPN ON (whitelist), false = VPN OFF (blacklist)
 
-    // Системный мусор — скрываем
     private val blacklist = setOf(
-        "com.android.stk",
-        "com.hihonor.android.clone",
-        "com.hihonor.android.fmradio",
-        "com.hihonor.photos",
-        "com.hihonor.soundrecorder",
-        "com.hihonor.systemmanager",
-        "com.hihonor.gameassistant",
-        "com.hihonor.magazine",
-        "com.hihonor.detectrepair",
-        "com.hihonor.android.pushagent",
-        "com.hihonor.appmarket",
-        "com.google.android.gms",
-        "com.google.android.modulemetadata",
-        "com.google.android.networkstack",
-        "com.google.android.tts",
-        "com.google.android.apps.wellbeing",
-        "com.google.mainline.adservices",
-        "com.google.mainline.telemetry",
-        "com.google.android.marvin.talkback",
-        "com.google.android.googlequicksearchbox",
-        "com.android.settings",
-        "com.android.dialer",
-        "com.android.contacts",
-        "com.android.messaging",
-        "com.android.calendar",
-        "com.android.camera",
-        "com.android.calculator2",
-        "com.android.documentsui",
-        "com.android.packageinstaller"
+        "com.android.stk", "com.hihonor.android.clone", "com.hihonor.android.fmradio",
+        "com.hihonor.photos", "com.hihonor.soundrecorder", "com.hihonor.systemmanager",
+        "com.hihonor.gameassistant", "com.hihonor.magazine", "com.hihonor.detectrepair",
+        "com.hihonor.android.pushagent", "com.hihonor.appmarket", "com.google.android.gms",
+        "com.google.android.modulemetadata", "com.google.android.networkstack",
+        "com.google.android.tts", "com.google.android.apps.wellbeing",
+        "com.google.mainline.adservices", "com.google.mainline.telemetry",
+        "com.google.android.marvin.talkback", "com.google.android.googlequicksearchbox",
+        "com.android.settings", "com.android.dialer", "com.android.contacts",
+        "com.android.messaging", "com.android.calendar", "com.android.camera",
+        "com.android.calculator2", "com.android.documentsui", "com.android.packageinstaller"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,9 +54,12 @@ class AppVpnActivity : AppCompatActivity() {
 
         appVpnStorage = AppVpnStorage(this)
         selectedPackages.addAll(appVpnStorage.getSelectedPackages())
+        excludedPackages.addAll(appVpnStorage.getExcludedPackages())
 
         rvApps = findViewById(R.id.rvApps)
         btnSave = findViewById(R.id.btnSave)
+        tvMode = findViewById(R.id.tvMode)
+        toggleMode = findViewById(R.id.toggleMode)
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
@@ -77,20 +67,38 @@ class AppVpnActivity : AppCompatActivity() {
             showPermissionDialog()
         }
 
+        toggleMode.setOnCheckedChangeListener { _, isChecked ->
+            isVpnMode = !isChecked
+            updateModeUI()
+            loadApps()
+        }
+        updateModeUI()
         loadApps()
 
         btnSave.setOnClickListener {
             appVpnStorage.setSelectedPackages(selectedPackages)
-            val enabled = selectedPackages.isNotEmpty()
+            appVpnStorage.setExcludedPackages(excludedPackages)
+            val enabled = selectedPackages.isNotEmpty() || excludedPackages.isNotEmpty()
             appVpnStorage.setEnabled(enabled)
             if (enabled) {
                 AppMonitorService.start(this)
-                Toast.makeText(this, "App VPN enabled for " + selectedPackages.size + " apps", Toast.LENGTH_SHORT).show()
+                val msg = "VPN ON: " + selectedPackages.size + ", VPN OFF: " + excludedPackages.size
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN disabled", Toast.LENGTH_SHORT).show()
             }
             finish()
+        }
+    }
+
+    private fun updateModeUI() {
+        if (isVpnMode) {
+            tvMode.text = "Режим: ЧЕРЕЗ VPN (выбранные приложения включают VPN)"
+            toggleMode.textOn = "Через VPN"
+        } else {
+            tvMode.text = "Режим: БЕЗ VPN (выбранные приложения отключают VPN)"
+            toggleMode.textOff = "Без VPN"
         }
     }
 
@@ -107,33 +115,32 @@ class AppVpnActivity : AppCompatActivity() {
             }
             val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, flags)
 
-            android.util.Log.d("AppVPN", "Total launcher apps: " + resolveList.size)
-
             val appList = resolveList
                 .filter { it.activityInfo.packageName != packageName }
                 .filter { it.activityInfo.packageName !in blacklist }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
                 .map { resolveInfo ->
                     val pkg = resolveInfo.activityInfo.packageName
+                    val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
                     AppInfo(
                         packageName = pkg,
                         appName = resolveInfo.loadLabel(pm).toString(),
                         icon = resolveInfo.loadIcon(pm),
-                        isSelected = selectedPackages.contains(pkg)
+                        isSelected = isSelected
                     )
                 }
-
-            android.util.Log.d("AppVPN", "Filtered apps: " + appList.size)
 
             apps.clear()
             apps.addAll(appList)
 
             withContext(Dispatchers.Main) {
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
-                    if (isChecked) {
-                        selectedPackages.add(app.packageName)
+                    if (isVpnMode) {
+                        if (isChecked) selectedPackages.add(app.packageName)
+                        else selectedPackages.remove(app.packageName)
                     } else {
-                        selectedPackages.remove(app.packageName)
+                        if (isChecked) excludedPackages.add(app.packageName)
+                        else excludedPackages.remove(app.packageName)
                     }
                 }
             }
@@ -143,18 +150,10 @@ class AppVpnActivity : AppCompatActivity() {
     private fun hasUsageStatsPermission(): Boolean {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                packageName
-            )
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
         } else {
             @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                packageName
-            )
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
         }
         return mode == AppOpsManager.MODE_ALLOWED
     }
@@ -163,12 +162,8 @@ class AppVpnActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Permission Required")
             .setMessage("App VPN needs Usage Access permission to detect when selected apps are opened. Please enable it in settings.")
-            .setPositiveButton("Open Settings") { _, _ ->
-                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                finish()
-            }
+            .setPositiveButton("Open Settings") { _, _ -> startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
             .setCancelable(false)
             .show()
     }

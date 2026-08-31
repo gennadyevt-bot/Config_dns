@@ -58,7 +58,8 @@ class AppMonitorService : Service() {
         if (!storage.isEnabled()) return
 
         val selectedPackages = storage.getSelectedPackages()
-        if (selectedPackages.isEmpty()) return
+        val excludedPackages = storage.getExcludedPackages()
+        if (selectedPackages.isEmpty() && excludedPackages.isEmpty()) return
 
         val currentApp = getForegroundApp()
         if (currentApp == lastForegroundApp) return
@@ -66,40 +67,54 @@ class AppMonitorService : Service() {
 
         android.util.Log.d("AppMonitor", "Foreground app: $currentApp")
 
-        val isTargetApp = currentApp != null && selectedPackages.contains(currentApp)
         val currentStatus = VpnManager.globalStatus
 
-        if (isTargetApp && currentStatus == VpnStatus.DISCONNECTED) {
-            android.util.Log.d("AppMonitor", "Target app detected: $currentApp, connecting VPN...")
-
-            // Убиваем target app, чтобы он пересоздал соединения через VPN
-            killApp(currentApp)
-
-            val servers = ServerStorage(this).loadServers()
-            val validServer = servers.firstOrNull {
-                it.interfacePrivateKey.isNotEmpty() &&
-                it.peerPublicKey.isNotEmpty() &&
-                it.peerEndpoint.isNotEmpty()
+        when {
+            // Если app в whitelist и VPN выключен → включаем
+            currentApp != null && selectedPackages.contains(currentApp) && currentStatus == VpnStatus.DISCONNECTED -> {
+                android.util.Log.d("AppMonitor", "Whitelist app detected: $currentApp, connecting VPN...")
+                killApp(currentApp)
+                connectVpn()
             }
-            validServer?.let {
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        kotlinx.coroutines.delay(2000)
-                        vpnManager?.connect(it)
-                        Handler(Looper.getMainLooper()).post {
-                            Toast.makeText(
-                                this@AppMonitorService,
-                                "VPN включён для $currentApp. Перезапустите приложение, если оно не работает.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("AppMonitor", "Auto-connect failed", e)
+            // Если app в blacklist и VPN включен → отключаем
+            currentApp != null && excludedPackages.contains(currentApp) && currentStatus == VpnStatus.CONNECTED -> {
+                android.util.Log.d("AppMonitor", "Blacklist app detected: $currentApp, disconnecting VPN...")
+                disconnectVpn()
+            }
+        }
+    }
+
+    private fun connectVpn() {
+        val servers = ServerStorage(this).loadServers()
+        val validServer = servers.firstOrNull {
+            it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+        }
+        validServer?.let {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    kotlinx.coroutines.delay(2000)
+                    vpnManager?.connect(it)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("AppMonitor", "Connect failed", e)
                 }
             }
         }
-        // Auto-disconnect УБРАН — VPN остаётся включённым
+    }
+
+    private fun disconnectVpn() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                vpnManager?.disconnect()
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(this@AppMonitorService, "VPN отключён для этого приложения", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AppMonitor", "Disconnect failed", e)
+            }
+        }
     }
 
     private fun killApp(packageName: String?) {
@@ -107,7 +122,6 @@ class AppMonitorService : Service() {
         try {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             am.killBackgroundProcesses(packageName)
-            android.util.Log.d("AppMonitor", "Killed background processes for: $packageName")
         } catch (e: Exception) {
             android.util.Log.e("AppMonitor", "Failed to kill app: $packageName", e)
         }
@@ -117,11 +131,7 @@ class AppMonitorService : Service() {
         return try {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val time = System.currentTimeMillis()
-            val stats = usm.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                time - 5000,
-                time
-            )
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 5000, time)
             if (stats.isNullOrEmpty()) return null
             stats.maxByOrNull { it.lastTimeUsed }?.packageName
         } catch (e: Exception) {
@@ -133,26 +143,17 @@ class AppMonitorService : Service() {
     private fun createNotification(): Notification {
         val channelId = "app_monitor_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "App VPN Monitor",
-                NotificationManager.IMPORTANCE_LOW
-            )
+            val channel = NotificationChannel(channelId, "App VPN Monitor", NotificationManager.IMPORTANCE_LOW)
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
         }
-
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Config VPN")
-            .setContentText("App VPN активен. VPN не отключается автоматически.")
+            .setContentText("Smart App VPN активен")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -161,7 +162,6 @@ class AppMonitorService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1001
-
         fun start(context: Context) {
             val intent = Intent(context, AppMonitorService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -170,7 +170,6 @@ class AppMonitorService : Service() {
                 context.startService(intent)
             }
         }
-
         fun stop(context: Context) {
             context.stopService(Intent(context, AppMonitorService::class.java))
         }

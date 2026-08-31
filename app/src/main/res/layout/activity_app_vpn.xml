@@ -1,44 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#228B22"
     android:padding="16dp">
 
     <TextView
-        android:layout_width="wrap_content"
+        android:id="@+id/tvMode"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="App VPN"
-        android:textSize="24sp"
+        android:text="Режим: ЧЕРЕЗ VPN"
+        android:textSize="16sp"
         android:textStyle="bold"
-        android:textColor="@android:color/white"
-        android:layout_marginBottom="4dp" />
+        android:paddingBottom="8dp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <ToggleButton
+        android:id="@+id/toggleMode"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Select apps that will auto-enable VPN when opened"
-        android:textSize="14sp"
-        android:textColor="#ccffcc"
-        android:layout_marginBottom="16dp" />
+        android:textOn="Без VPN"
+        android:textOff="Через VPN" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvApps"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@android:color/white"
-        android:padding="8dp" />
+        android:layout_weight="1" />
 
     <Button
         android:id="@+id/btnSave"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save"
-        android:textColor="@android:color/white"
-        android:backgroundTint="#32CD32"
-        android:layout_marginTop="16dp" />
-
+        android:text="Сохранить" />
 </LinearLayout>
