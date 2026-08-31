@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 class AppMonitorService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val checkInterval = 1500L // 1.5 секунды (быстрее реагируем)
+    private val checkInterval = 1500L
     private var vpnManager: VpnManager? = null
     private var appVpnStorage: AppVpnStorage? = null
     private var lastConnectedByService = false
@@ -80,9 +80,7 @@ class AppMonitorService : Service() {
                 validServer?.let {
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            // Небольшая задержка, чтобы приложение "устаканилось" в foreground
-                            // и новые соединения шли через VPN
-                            kotlinx.coroutines.delay(800)
+                            kotlinx.coroutines.delay(1500)
                             vpnManager?.connect(it)
                             lastConnectedByService = true
                         } catch (e: Exception) {

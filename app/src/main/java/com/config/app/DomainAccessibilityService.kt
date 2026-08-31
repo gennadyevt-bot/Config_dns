@@ -18,6 +18,7 @@ class DomainAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         vpnManager = VpnManager(this)
         domainStorage = DomainVpnStorage(this)
+        android.util.Log.d("DomainVPN", "Accessibility Service connected")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -29,9 +30,26 @@ class DomainAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastTriggered < 3000) return
 
-        val root = rootInActiveWindow ?: return
-        val url = findUrlInWindow(root)
-        root.recycle()
+        // Собираем URL из всех возможных источников
+        var url = ""
+
+        // 1. Пробуем event.text (для некоторых браузеров URL приходит тут)
+        val eventText = event.text?.joinToString(" ") ?: ""
+        url = extractUrl(eventText)
+
+        // 2. Пробуем event.contentDescription
+        if (url.isEmpty()) {
+            url = extractUrl(event.contentDescription?.toString() ?: "")
+        }
+
+        // 3. Пробуем rootInActiveWindow
+        if (url.isEmpty()) {
+            val root = rootInActiveWindow
+            if (root != null) {
+                url = findUrlInWindow(root)
+                root.recycle()
+            }
+        }
 
         if (url.isEmpty() || url == lastUrl) return
         lastUrl = url
@@ -44,7 +62,7 @@ class DomainAccessibilityService : AccessibilityService() {
 
         if (matchedDomain != null) {
             lastTriggered = now
-            android.util.Log.d("DomainVPN", "Matched domain: $matchedDomain")
+            android.util.Log.d("DomainVPN", "MATCHED domain: $matchedDomain")
             if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
                 CoroutineScope(Dispatchers.IO).launch {
                     val servers = ServerStorage(this@DomainAccessibilityService).loadServers()
@@ -57,6 +75,7 @@ class DomainAccessibilityService : AccessibilityService() {
                         try {
                             kotlinx.coroutines.delay(500)
                             vpnManager?.connect(it)
+                            android.util.Log.d("DomainVPN", "VPN connected for domain: $matchedDomain")
                         } catch (e: Exception) {
                             android.util.Log.e("DomainVPN", "Auto-connect failed", e)
                         }
@@ -68,40 +87,50 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    private fun findUrlInWindow(root: AccessibilityNodeInfo): String {
-        // Сначала ищем по viewIdResourceName — это адресная строка в браузерах
-        val urlIds = listOf(
-            "url_bar", "mozac_browser_toolbar_url_view", "addressbar_edit",
-            "url_bar_title", "location_bar", "omnibox", "edit_url",
-            "com.android.chrome:id/url_bar",
-            "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
-            "com.opera.browser:id/url_bar",
-            "com.yandex.browser:id/omnibox_text"
-        )
+    private fun extractUrl(text: String): String {
+        if (text.isEmpty()) return ""
+        // Ищем http:// или https://
+        val httpRegex = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
+        val match = httpRegex.find(text)
+        if (match != null) return match.value
 
+        // Ищем домен вида domain.com
+        val domainRegex = Regex("""[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}[^\s]*""")
+        val domainMatch = domainRegex.find(text)
+        if (domainMatch != null) return "https://" + domainMatch.value
+
+        return ""
+    }
+
+    private fun findUrlInWindow(root: AccessibilityNodeInfo): String {
         val queue = java.util.ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
 
         while (queue.isNotEmpty()) {
             val node = queue.poll()
-            val viewId = node.viewIdResourceName
-            if (viewId != null) {
-                for (id in urlIds) {
-                    if (viewId.contains(id, ignoreCase = true)) {
-                        val text = node.text?.toString() ?: ""
-                        val desc = node.contentDescription?.toString() ?: ""
-                        val result = text.ifEmpty { desc }
-                        if (result.isNotEmpty()) return result
-                    }
+
+            // Проверяем viewId на URL-related
+            val viewId = node.viewIdResourceName ?: ""
+            if (viewId.contains("url", ignoreCase = true) ||
+                viewId.contains("address", ignoreCase = true) ||
+                viewId.contains("location", ignoreCase = true) ||
+                viewId.contains("omnibox", ignoreCase = true)) {
+                val text = node.text?.toString() ?: ""
+                val desc = node.contentDescription?.toString() ?: ""
+                val result = text.ifEmpty { desc }
+                if (result.isNotEmpty() && (result.contains(".") || result.contains("/"))) {
+                    return extractUrl(result)
                 }
             }
 
-            // Также проверяем text/contentDescription на наличие http/https
+            // Проверяем text/contentDescription напрямую
             val text = node.text?.toString() ?: ""
             val desc = node.contentDescription?.toString() ?: ""
             for (candidate in listOf(text, desc)) {
-                if (candidate.startsWith("http://") || candidate.startsWith("https://") || candidate.contains("www.")) {
-                    return candidate
+                if (candidate.contains("http://") || candidate.contains("https://") ||
+                    candidate.contains("www.") || candidate.matches(Regex(""".*\.[a-zA-Z]{2,}.*"""))) {
+                    val extracted = extractUrl(candidate)
+                    if (extracted.isNotEmpty()) return extracted
                 }
             }
 
