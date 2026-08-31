@@ -3,6 +3,7 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Bundle
@@ -98,13 +99,19 @@ class AppVpnActivity : AppCompatActivity() {
             val pm = packageManager
             val launcherIntent = Intent(Intent.ACTION_MAIN, null)
             launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-            val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, 0)
+
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PackageManager.MATCH_ALL
+            } else {
+                PackageManager.GET_META_DATA
+            }
+            val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, flags)
 
             android.util.Log.d("AppVPN", "Total launcher apps: " + resolveList.size)
 
             val appList = resolveList
-                .filter { it.activityInfo.packageName != packageName } // исключаем Config
-                .filter { it.activityInfo.packageName !in blacklist }  // исключаем мусор
+                .filter { it.activityInfo.packageName != packageName }
+                .filter { it.activityInfo.packageName !in blacklist }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
                 .map { resolveInfo ->
                     val pkg = resolveInfo.activityInfo.packageName
