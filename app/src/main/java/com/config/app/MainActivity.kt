@@ -82,14 +82,16 @@ class MainActivity : AppCompatActivity() {
 
         navView.setNavigationItemSelectedListener { menuItem ->
             when (menuItem.itemId) {
+                R.id.navAppVpn -> startActivity(android.content.Intent(this, AppVpnActivity::class.java))
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.2 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v1.1.0 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
         }
 
+        // Auto-connect on app start
         val autoConnect = AutoConnectStorage(this)
         if (autoConnect.isEnabled()) {
             val validServer = servers.firstOrNull { hasValidConfig(it) }
@@ -98,13 +100,18 @@ class MainActivity : AppCompatActivity() {
                 requestVpnPermissionAndConnect(it)
             }
         }
+
+        // Start App Monitor if enabled
+        val appVpnStorage = AppVpnStorage(this)
+        if (appVpnStorage.isEnabled() && appVpnStorage.getSelectedPackages().isNotEmpty()) {
+            AppMonitorService.start(this)
+        }
     }
 
     private fun loadServers() {
         servers.clear()
         val saved = serverStorage.loadServers()
         if (saved.isEmpty()) {
-            // Demo config — VPNJantit Premium USA (plain WireGuard, no AmneziaWG obfuscation)
             servers.add(ServerInfo(
                 id = "slot_0",
                 name = "VPNJantit Premium USA",
