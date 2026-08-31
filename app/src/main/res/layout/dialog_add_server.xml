@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="New Config"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="16dp" />
+
+        <EditText
+            android:id="@+id/etName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Config name"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/etEndpoint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Endpoint (IP:port)"
+            android:inputType="text"
+            android:layout_marginTop="8dp" />
+
+        <EditText
+            android:id="@+id/etPrivateKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Private key"
+            android:inputType="text"
+            android:layout_marginTop="8dp" />
+
+        <EditText
+            android:id="@+id/etPublicKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Server public key"
+            android:inputType="text"
+            android:layout_marginTop="8dp" />
+
+        <EditText
+            android:id="@+id/etAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Address (e.g. 192.168.6.54/32)"
+            android:inputType="text"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AmneziaWG obfuscation (optional)"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/etJc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Jc (default 5)"
+            android:inputType="number" />
+
+        <EditText
+            android:id="@+id/etJmin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Jmin (default 50)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etJmax"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Jmax (default 1000)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etS1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="S1 (default 50)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etS2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="S2 (default 100)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etH1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="H1 (default 1)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etH2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="H2 (default 2)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etH3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="H3 (default 3)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+        <EditText
+            android:id="@+id/etH4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="H4 (default 4)"
+            android:inputType="number"
+            android:layout_marginTop="6dp" />
+
+    </LinearLayout>
+</ScrollView>

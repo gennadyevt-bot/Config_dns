@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="green_200">#FF90EE90</color>
+    <color name="green_500">#FF32CD32</color>
+    <color name="green_700">#FF228B22</color>
+    <color name="lime_200">#FFADFF2F</color>
+    <color name="lime_500">#FF7CFC00</color>
+    <color name="lime_700">#FF55DD00</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="red_500">#FFDC143C</color>
+    <color name="red_700">#FFB22222</color>
+</resources>

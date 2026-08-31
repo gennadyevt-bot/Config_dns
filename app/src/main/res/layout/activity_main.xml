@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#228B22">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CONFIG"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/white"
+            android:shadowColor="#1a5c00"
+            android:shadowDx="2"
+            android:shadowDy="3"
+            android:shadowRadius="4"
+            android:layout_marginTop="20dp" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Disconnected"
+            android:textSize="14sp"
+            android:textColor="#ccffcc"
+            android:layout_marginTop="6dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/tvTrafficDown"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↓ 0 B/s"
+                android:textSize="12sp"
+                android:textColor="#90EE90"
+                android:layout_marginEnd="12dp" />
+
+            <TextView
+                android:id="@+id/tvTrafficUp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↑ 0 B/s"
+                android:textSize="12sp"
+                android:textColor="#FF6B6B" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvServers"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp"
+            android:overScrollMode="always" />
+
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/ivMenu"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:src="@drawable/ic_menu"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="Menu" />
+
+</FrameLayout>

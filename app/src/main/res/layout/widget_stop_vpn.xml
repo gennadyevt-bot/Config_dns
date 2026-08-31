@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#228B22"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/tvWidgetStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CONFIG"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/white" />
+
+    <TextView
+        android:id="@+id/tvWidgetState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OFF"
+        android:textSize="12sp"
+        android:textColor="#ccffcc"
+        android:layout_marginTop="2dp" />
+
+</LinearLayout>
