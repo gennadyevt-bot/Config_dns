@@ -5,6 +5,10 @@
         android:title="App VPN"
         android:icon="@drawable/ic_menu_app_vpn" />
     <item
+        android:id="@+id/navDomainVpn"
+        android:title="Domain VPN"
+        android:icon="@drawable/ic_menu_domain" />
+    <item
         android:id="@+id/navBackup"
         android:title="Backup"
         android:icon="@drawable/ic_menu_backup" />
