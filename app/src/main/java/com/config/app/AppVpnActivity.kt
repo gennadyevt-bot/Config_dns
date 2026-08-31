@@ -3,8 +3,6 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Bundle
@@ -29,34 +27,8 @@ class AppVpnActivity : AppCompatActivity() {
     private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
 
-    // Популярные приложения — всегда показываем, даже если system
-    private val popularApps = setOf(
-        "com.google.android.youtube",
-        "com.instagram.android",
-        "org.telegram.messenger",
-        "org.telegram.messenger.web",
-        "com.whatsapp",
-        "com.facebook.katana",
-        "com.twitter.android",
-        "com.x.android",
-        "com.zhiliaoapp.musically",
-        "com.snapchat.android",
-        "com.discord",
-        "com.spotify.music",
-        "com.netflix.mediaclient",
-        "com.google.android.apps.maps",
-        "com.google.android.gm",
-        "com.google.android.apps.docs",
-        "com.android.chrome",
-        "org.mozilla.firefox",
-        "com.opera.browser",
-        "com.microsoft.emmx",
-        "com.vkontakte.android",
-        "com.ok.android"
-    )
-
-    // Системный мусор — всегда скрываем
-    private val systemTrash = setOf(
+    // Системный мусор — скрываем
+    private val blacklist = setOf(
         "com.android.stk",
         "com.hihonor.android.clone",
         "com.hihonor.android.fmradio",
@@ -67,6 +39,7 @@ class AppVpnActivity : AppCompatActivity() {
         "com.hihonor.magazine",
         "com.hihonor.detectrepair",
         "com.hihonor.android.pushagent",
+        "com.hihonor.appmarket",
         "com.google.android.gms",
         "com.google.android.modulemetadata",
         "com.google.android.networkstack",
@@ -75,8 +48,16 @@ class AppVpnActivity : AppCompatActivity() {
         "com.google.mainline.adservices",
         "com.google.mainline.telemetry",
         "com.google.android.marvin.talkback",
-        "com.android.vending",
-        "com.google.android.googlequicksearchbox"
+        "com.google.android.googlequicksearchbox",
+        "com.android.settings",
+        "com.android.dialer",
+        "com.android.contacts",
+        "com.android.messaging",
+        "com.android.calendar",
+        "com.android.camera",
+        "com.android.calculator2",
+        "com.android.documentsui",
+        "com.android.packageinstaller"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -119,20 +100,11 @@ class AppVpnActivity : AppCompatActivity() {
             launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
             val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, 0)
 
+            android.util.Log.d("AppVPN", "Total launcher apps: " + resolveList.size)
+
             val appList = resolveList
                 .filter { it.activityInfo.packageName != packageName } // исключаем Config
-                .filter { resolveInfo ->
-                    val pkg = resolveInfo.activityInfo.packageName
-                    if (pkg in systemTrash) return@filter false
-                    if (pkg in popularApps) return@filter true
-                    // Остальные: показываем только если НЕ системное
-                    try {
-                        val appInfo = pm.getApplicationInfo(pkg, 0)
-                        (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
-                    } catch (e: Exception) {
-                        false
-                    }
-                }
+                .filter { it.activityInfo.packageName !in blacklist }  // исключаем мусор
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
                 .map { resolveInfo ->
                     val pkg = resolveInfo.activityInfo.packageName
@@ -143,6 +115,8 @@ class AppVpnActivity : AppCompatActivity() {
                         isSelected = selectedPackages.contains(pkg)
                     )
                 }
+
+            android.util.Log.d("AppVPN", "Filtered apps: " + appList.size)
 
             apps.clear()
             apps.addAll(appList)
