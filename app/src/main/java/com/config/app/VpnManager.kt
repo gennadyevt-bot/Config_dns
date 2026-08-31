@@ -44,8 +44,10 @@ class VpnManager(private val context: Context) {
             backend.setState(tunnel!!, Tunnel.State.UP, config)
 
             updateStatus(VpnStatus.CONNECTED)
+            StopVpnWidget.updateWidget(context, VpnStatus.CONNECTED)
         } catch (e: Exception) {
             updateStatus(VpnStatus.ERROR)
+            StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
             showToast("Ошибка: ${e.message}")
         }
     }
@@ -57,8 +59,10 @@ class VpnManager(private val context: Context) {
             updateStatus(VpnStatus.DISCONNECTED)
             currentServer = null
             onServerChanged?.invoke(null)
+            StopVpnWidget.updateWidget(context, VpnStatus.DISCONNECTED)
         } catch (e: Exception) {
             updateStatus(VpnStatus.ERROR)
+            StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
         }
     }
 
@@ -84,9 +88,12 @@ class VpnManager(private val context: Context) {
 
             appendLine("[Peer]")
             appendLine("PublicKey = ${server.peerPublicKey}")
-            appendLine("AllowedIPs = 0.0.0.0/0")
+            if (server.peerPresharedKey.isNotEmpty()) {
+                appendLine("PresharedKey = ${server.peerPresharedKey}")
+            }
+            appendLine("AllowedIPs = ${server.peerAllowedIPs}")
             appendLine("Endpoint = ${server.peerEndpoint}")
-            appendLine("PersistentKeepalive = 25")
+            appendLine("PersistentKeepalive = ${server.peerPersistentKeepalive}")
         }
     }
 
