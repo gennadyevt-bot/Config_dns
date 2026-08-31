@@ -9,7 +9,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -24,8 +27,10 @@ class AppVpnActivity : AppCompatActivity() {
 
     private lateinit var rvApps: RecyclerView
     private lateinit var btnSave: Button
+    private lateinit var etSearch: EditText
     private lateinit var appVpnStorage: AppVpnStorage
-    private val apps = mutableListOf<AppInfo>()
+    private val allApps = mutableListOf<AppInfo>()
+    private val displayedApps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +42,7 @@ class AppVpnActivity : AppCompatActivity() {
 
         rvApps = findViewById(R.id.rvApps)
         btnSave = findViewById(R.id.btnSave)
+        etSearch = findViewById(R.id.etSearch)
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
@@ -45,6 +51,14 @@ class AppVpnActivity : AppCompatActivity() {
         }
 
         loadApps()
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filterApps(s?.toString() ?: "")
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         btnSave.setOnClickListener {
             appVpnStorage.setSelectedPackages(selectedPackages)
@@ -65,8 +79,12 @@ class AppVpnActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 || it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0 }
-                .sortedBy { pm.getApplicationLabel(it).toString() }
+                // Только пользовательские (non-system) приложения, исключая сам Config
+                .filter {
+                    (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
+                    it.packageName != packageName
+                }
+                .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
 
             val appList = installedApps.map { appInfo ->
                 val pkg = appInfo.packageName
@@ -78,11 +96,13 @@ class AppVpnActivity : AppCompatActivity() {
                 )
             }
 
-            apps.clear()
-            apps.addAll(appList)
+            allApps.clear()
+            allApps.addAll(appList)
+            displayedApps.clear()
+            displayedApps.addAll(appList)
 
             withContext(Dispatchers.Main) {
-                rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
+                rvApps.adapter = AppListAdapter(displayedApps) { app, isChecked ->
                     if (isChecked) {
                         selectedPackages.add(app.packageName)
                     } else {
@@ -91,6 +111,20 @@ class AppVpnActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun filterApps(query: String) {
+        val lower = query.lowercase()
+        displayedApps.clear()
+        if (lower.isEmpty()) {
+            displayedApps.addAll(allApps)
+        } else {
+            displayedApps.addAll(allApps.filter {
+                it.appName.lowercase().contains(lower) ||
+                it.packageName.lowercase().contains(lower)
+            })
+        }
+        rvApps.adapter?.notifyDataSetChanged()
     }
 
     private fun hasUsageStatsPermission(): Boolean {
