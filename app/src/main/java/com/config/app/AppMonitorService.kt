@@ -88,17 +88,9 @@ class AppMonitorService : Service() {
         validServer?.let { server ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    // Сначала disconnect (очищаем "грязный" туннель от предыдущей сессии)
-                    vpnManager?.disconnect()
-                    kotlinx.coroutines.delay(500)
-                    // Теперь connect — чистый туннель
                     vpnManager?.connect(server)
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(
-                            this@AppMonitorService,
-                            "VPN включён. Закройте и откройте $appName заново, если не работает.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("AppMonitor", "Connect failed", e)
