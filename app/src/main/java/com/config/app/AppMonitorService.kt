@@ -1,6 +1,5 @@
 package com.config.app
 
-import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -70,32 +69,36 @@ class AppMonitorService : Service() {
         val currentStatus = VpnManager.globalStatus
 
         when {
-            // Если app в whitelist и VPN выключен → включаем
             currentApp != null && selectedPackages.contains(currentApp) && currentStatus == VpnStatus.DISCONNECTED -> {
-                android.util.Log.d("AppMonitor", "Whitelist app detected: $currentApp, connecting VPN...")
-                killApp(currentApp)
-                connectVpn()
+                android.util.Log.d("AppMonitor", "Whitelist app: $currentApp, connecting...")
+                connectVpn(currentApp)
             }
-            // Если app в blacklist и VPN включен → отключаем
             currentApp != null && excludedPackages.contains(currentApp) && currentStatus == VpnStatus.CONNECTED -> {
-                android.util.Log.d("AppMonitor", "Blacklist app detected: $currentApp, disconnecting VPN...")
+                android.util.Log.d("AppMonitor", "Blacklist app: $currentApp, disconnecting...")
                 disconnectVpn()
             }
         }
     }
 
-    private fun connectVpn() {
+    private fun connectVpn(appName: String) {
         val servers = ServerStorage(this).loadServers()
         val validServer = servers.firstOrNull {
             it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
         }
-        validServer?.let {
+        validServer?.let { server ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    kotlinx.coroutines.delay(2000)
-                    vpnManager?.connect(it)
+                    // Сначала disconnect (очищаем "грязный" туннель от предыдущей сессии)
+                    vpnManager?.disconnect()
+                    kotlinx.coroutines.delay(500)
+                    // Теперь connect — чистый туннель
+                    vpnManager?.connect(server)
                     Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@AppMonitorService,
+                            "VPN включён. Закройте и откройте $appName заново, если не работает.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("AppMonitor", "Connect failed", e)
@@ -109,21 +112,11 @@ class AppMonitorService : Service() {
             try {
                 vpnManager?.disconnect()
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this@AppMonitorService, "VPN отключён для этого приложения", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AppMonitorService, "VPN отключён", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AppMonitor", "Disconnect failed", e)
             }
-        }
-    }
-
-    private fun killApp(packageName: String?) {
-        if (packageName == null) return
-        try {
-            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            am.killBackgroundProcesses(packageName)
-        } catch (e: Exception) {
-            android.util.Log.e("AppMonitor", "Failed to kill app: $packageName", e)
         }
     }
 
