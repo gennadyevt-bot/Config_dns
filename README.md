@@ -14,7 +14,7 @@ Android-приложение для подключения к VPN-сервера
 
 ### Скачать APK
 
-Последняя версия: **[Config v1.0.3](https://github.com/gennadyevt-bot/Config_dns/releases/download/v1.0.3/Config_v1.0.3.apk)**
+Последняя версия: **[Config v1.0.5](https://github.com/gennadyevt-bot/Config_dns/releases/download/v1.0.3/Config_v1.0.3.apk)**
 
 ### Сборка из исходников
 

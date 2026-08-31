@@ -31,19 +31,26 @@ class AppListAdapter(
         private val tvPackage: TextView = itemView.findViewById(R.id.tvAppPackage)
         private val cbSelect: CheckBox = itemView.findViewById(R.id.cbSelect)
 
+        init {
+            itemView.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) {
+                    cbSelect.isChecked = !cbSelect.isChecked
+                }
+            }
+        }
+
         fun bind(app: AppInfo) {
             tvName.text = app.appName
             tvPackage.text = app.packageName
             ivIcon.setImageDrawable(app.icon)
-            cbSelect.isChecked = app.isSelected
 
+            // Отключаем listener перед установкой checked, иначе сработает старый от recycle
+            cbSelect.setOnCheckedChangeListener(null)
+            cbSelect.isChecked = app.isSelected
             cbSelect.setOnCheckedChangeListener { _, isChecked ->
                 app.isSelected = isChecked
                 onCheckedChange(app, isChecked)
-            }
-
-            itemView.setOnClickListener {
-                cbSelect.isChecked = !cbSelect.isChecked
             }
         }
     }
