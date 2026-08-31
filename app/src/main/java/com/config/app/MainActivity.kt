@@ -357,6 +357,9 @@ class MainActivity : AppCompatActivity() {
             VpnStatus.CONNECTED -> "Connected"
             VpnStatus.CONNECTING -> "Connecting…"
             VpnStatus.DISCONNECTED -> "Disconnected"
+            VpnStatus.DISCONNECTING -> "Disconnecting…"
+            VpnStatus.SWITCHING -> "Switching…"
+            VpnStatus.ERROR -> "Error"
         }
     }
 
