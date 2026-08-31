@@ -10,7 +10,7 @@ data class ServerInfo(
     val interfacePrivateKey: String = "",
     val peerPublicKey: String = "",
     val peerPresharedKey: String = "",
-    val peerAllowedIPs: String = "0.0.0.0/0",
+    val peerAllowedIPs: String = "0.0.0.0/0, ::/0",
     val peerEndpoint: String = "",
     val peerPersistentKeepalive: String = "25",
     val jc: String = "5",
