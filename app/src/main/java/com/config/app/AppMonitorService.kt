@@ -1,5 +1,6 @@
 package com.config.app
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -24,9 +25,7 @@ class AppMonitorService : Service() {
     private val checkInterval = 1500L
     private var vpnManager: VpnManager? = null
     private var appVpnStorage: AppVpnStorage? = null
-    private var lastConnectedByService = false
     private var lastForegroundApp: String? = null
-    private var disconnectRunnable: Runnable? = null
 
     private val runnable = object : Runnable {
         override fun run() {
@@ -52,7 +51,6 @@ class AppMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(runnable)
-        disconnectRunnable?.let { handler.removeCallbacks(it) }
     }
 
     private fun checkForegroundApp() {
@@ -71,55 +69,47 @@ class AppMonitorService : Service() {
         val isTargetApp = currentApp != null && selectedPackages.contains(currentApp)
         val currentStatus = VpnManager.globalStatus
 
-        when {
-            isTargetApp && currentStatus == VpnStatus.DISCONNECTED -> {
-                android.util.Log.d("AppMonitor", "Target app detected, connecting VPN...")
-                // Отменяем отложенное отключение
-                disconnectRunnable?.let { handler.removeCallbacks(it) }
-                disconnectRunnable = null
+        if (isTargetApp && currentStatus == VpnStatus.DISCONNECTED) {
+            android.util.Log.d("AppMonitor", "Target app detected: $currentApp, connecting VPN...")
 
-                val servers = ServerStorage(this).loadServers()
-                val validServer = servers.firstOrNull {
-                    it.interfacePrivateKey.isNotEmpty() &&
-                    it.peerPublicKey.isNotEmpty() &&
-                    it.peerEndpoint.isNotEmpty()
-                }
-                validServer?.let {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            kotlinx.coroutines.delay(3000)
-                            vpnManager?.connect(it)
-                            lastConnectedByService = true
-                            // Показываем Toast на главном потоке
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(
-                                    this@AppMonitorService,
-                                    "VPN включён. Если приложение не работает, закройте его полностью и откройте заново.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("AppMonitor", "Auto-connect failed", e)
+            // Убиваем target app, чтобы он пересоздал соединения через VPN
+            killApp(currentApp)
+
+            val servers = ServerStorage(this).loadServers()
+            val validServer = servers.firstOrNull {
+                it.interfacePrivateKey.isNotEmpty() &&
+                it.peerPublicKey.isNotEmpty() &&
+                it.peerEndpoint.isNotEmpty()
+            }
+            validServer?.let {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        kotlinx.coroutines.delay(2000)
+                        vpnManager?.connect(it)
+                        Handler(Looper.getMainLooper()).post {
+                            Toast.makeText(
+                                this@AppMonitorService,
+                                "VPN включён для $currentApp. Перезапустите приложение, если оно не работает.",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
+                    } catch (e: Exception) {
+                        android.util.Log.e("AppMonitor", "Auto-connect failed", e)
                     }
                 }
             }
-            !isTargetApp && currentStatus == VpnStatus.CONNECTED && lastConnectedByService -> {
-                android.util.Log.d("AppMonitor", "Left target app, scheduling disconnect in 30s...")
-                // Отключаем VPN через 30 секунд, а не сразу — даём время "закрыть" соединения
-                disconnectRunnable = Runnable {
-                    android.util.Log.d("AppMonitor", "Disconnecting VPN after timeout...")
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            vpnManager?.disconnect()
-                            lastConnectedByService = false
-                        } catch (e: Exception) {
-                            android.util.Log.e("AppMonitor", "Auto-disconnect failed", e)
-                        }
-                    }
-                }
-                handler.postDelayed(disconnectRunnable!!, 30000)
-            }
+        }
+        // Auto-disconnect УБРАН — VPN остаётся включённым
+    }
+
+    private fun killApp(packageName: String?) {
+        if (packageName == null) return
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            am.killBackgroundProcesses(packageName)
+            android.util.Log.d("AppMonitor", "Killed background processes for: $packageName")
+        } catch (e: Exception) {
+            android.util.Log.e("AppMonitor", "Failed to kill app: $packageName", e)
         }
     }
 
@@ -162,7 +152,7 @@ class AppMonitorService : Service() {
 
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Config VPN")
-            .setContentText("Monitoring apps for auto-VPN...")
+            .setContentText("App VPN активен. VPN не отключается автоматически.")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
