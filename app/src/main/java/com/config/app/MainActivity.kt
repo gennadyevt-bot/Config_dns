@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         ivMenu = findViewById(R.id.ivMenu)
         drawerLayout = findViewById(R.id.drawerLayout)
         navView = findViewById(R.id.navView)
+        navView.itemIconTintList = null
 
         requestNotificationPermission()
         loadServers()
