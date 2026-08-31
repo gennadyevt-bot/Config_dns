@@ -3,6 +3,7 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
@@ -27,6 +28,56 @@ class AppVpnActivity : AppCompatActivity() {
     private lateinit var appVpnStorage: AppVpnStorage
     private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
+
+    // Популярные приложения — всегда показываем, даже если system
+    private val popularApps = setOf(
+        "com.google.android.youtube",
+        "com.instagram.android",
+        "org.telegram.messenger",
+        "org.telegram.messenger.web",
+        "com.whatsapp",
+        "com.facebook.katana",
+        "com.twitter.android",
+        "com.x.android",
+        "com.zhiliaoapp.musically",
+        "com.snapchat.android",
+        "com.discord",
+        "com.spotify.music",
+        "com.netflix.mediaclient",
+        "com.google.android.apps.maps",
+        "com.google.android.gm",
+        "com.google.android.apps.docs",
+        "com.android.chrome",
+        "org.mozilla.firefox",
+        "com.opera.browser",
+        "com.microsoft.emmx",
+        "com.vkontakte.android",
+        "com.ok.android"
+    )
+
+    // Системный мусор — всегда скрываем
+    private val systemTrash = setOf(
+        "com.android.stk",
+        "com.hihonor.android.clone",
+        "com.hihonor.android.fmradio",
+        "com.hihonor.photos",
+        "com.hihonor.soundrecorder",
+        "com.hihonor.systemmanager",
+        "com.hihonor.gameassistant",
+        "com.hihonor.magazine",
+        "com.hihonor.detectrepair",
+        "com.hihonor.android.pushagent",
+        "com.google.android.gms",
+        "com.google.android.modulemetadata",
+        "com.google.android.networkstack",
+        "com.google.android.tts",
+        "com.google.android.apps.wellbeing",
+        "com.google.mainline.adservices",
+        "com.google.mainline.telemetry",
+        "com.google.android.marvin.talkback",
+        "com.android.vending",
+        "com.google.android.googlequicksearchbox"
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,13 +115,24 @@ class AppVpnActivity : AppCompatActivity() {
     private fun loadApps() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
-            // ВСЕ приложения с launcher intent (включая предустановленные YouTube, Instagram и т.д.)
             val launcherIntent = Intent(Intent.ACTION_MAIN, null)
             launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
             val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, 0)
 
             val appList = resolveList
-                .filter { it.activityInfo.packageName != packageName } // исключаем сам Config
+                .filter { it.activityInfo.packageName != packageName } // исключаем Config
+                .filter { resolveInfo ->
+                    val pkg = resolveInfo.activityInfo.packageName
+                    if (pkg in systemTrash) return@filter false
+                    if (pkg in popularApps) return@filter true
+                    // Остальные: показываем только если НЕ системное
+                    try {
+                        val appInfo = pm.getApplicationInfo(pkg, 0)
+                        (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
                 .map { resolveInfo ->
                     val pkg = resolveInfo.activityInfo.packageName
