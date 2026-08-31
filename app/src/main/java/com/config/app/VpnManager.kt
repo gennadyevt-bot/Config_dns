@@ -195,22 +195,30 @@ class VpnManager(private val context: Context) {
     }
 
     private fun buildConfig(server: ServerInfo): Config {
-        val presharedKeyLine = if (server.peerPresharedKey.isNotEmpty()) {
-            "PresharedKey = ${server.peerPresharedKey}\n"
-        } else {
-            ""
-        }
+        val sb = StringBuilder()
 
-        val awgParams = buildString {
-            if (server.jc.isNotEmpty() && server.jc != "0") append("Jc = ${server.jc}\n")
-            if (server.jmin.isNotEmpty() && server.jmin != "0") append("Jmin = ${server.jmin}\n")
-            if (server.jmax.isNotEmpty() && server.jmax != "0") append("Jmax = ${server.jmax}\n")
-            if (server.s1.isNotEmpty() && server.s1 != "0") append("S1 = ${server.s1}\n")
-            if (server.s2.isNotEmpty() && server.s2 != "0") append("S2 = ${server.s2}\n")
-            if (server.h1.isNotEmpty() && server.h1 != "0") append("H1 = ${server.h1}\n")
-            if (server.h2.isNotEmpty() && server.h2 != "0") append("H2 = ${server.h2}\n")
-            if (server.h3.isNotEmpty() && server.h3 != "0") append("H3 = ${server.h3}\n")
-            if (server.h4.isNotEmpty() && server.h4 != "0") append("H4 = ${server.h4}\n")
+        // Interface section
+        sb.appendLine("[Interface]")
+        sb.appendLine("Address = ${server.interfaceAddress}")
+        sb.appendLine("DNS = ${server.interfaceDns}")
+        sb.appendLine("PrivateKey = ${server.interfacePrivateKey}")
+
+        // AmneziaWG params
+        if (server.jc.isNotEmpty() && server.jc != "0") sb.appendLine("Jc = ${server.jc}")
+        if (server.jmin.isNotEmpty() && server.jmin != "0") sb.appendLine("Jmin = ${server.jmin}")
+        if (server.jmax.isNotEmpty() && server.jmax != "0") sb.appendLine("Jmax = ${server.jmax}")
+        if (server.s1.isNotEmpty() && server.s1 != "0") sb.appendLine("S1 = ${server.s1}")
+        if (server.s2.isNotEmpty() && server.s2 != "0") sb.appendLine("S2 = ${server.s2}")
+        if (server.h1.isNotEmpty() && server.h1 != "0") sb.appendLine("H1 = ${server.h1}")
+        if (server.h2.isNotEmpty() && server.h2 != "0") sb.appendLine("H2 = ${server.h2}")
+        if (server.h3.isNotEmpty() && server.h3 != "0") sb.appendLine("H3 = ${server.h3}")
+        if (server.h4.isNotEmpty() && server.h4 != "0") sb.appendLine("H4 = ${server.h4}")
+
+        // Peer section
+        sb.appendLine("[Peer]")
+        sb.appendLine("PublicKey = ${server.peerPublicKey}")
+        if (server.peerPresharedKey.isNotEmpty()) {
+            sb.appendLine("PresharedKey = ${server.peerPresharedKey}")
         }
 
         val allowedIPs = if (server.peerAllowedIPs.contains("::/0")) {
@@ -219,21 +227,14 @@ class VpnManager(private val context: Context) {
         } else {
             server.peerAllowedIPs
         }
+        sb.appendLine("AllowedIPs = $allowedIPs")
+        sb.appendLine("Endpoint = ${server.peerEndpoint}")
+        sb.appendLine("PersistentKeepalive = ${server.peerPersistentKeepalive}")
 
-        val awgConfig = """
-            [Interface]
-            Address = ${server.interfaceAddress}
-            DNS = ${server.interfaceDns}
-            PrivateKey = ${server.interfacePrivateKey}
-            ${awgParams}[Peer]
-            PublicKey = ${server.peerPublicKey}
-            $presharedKeyLine
-            AllowedIPs = $allowedIPs
-            Endpoint = ${server.peerEndpoint}
-            PersistentKeepalive = ${server.peerPersistentKeepalive}
-        """.trimIndent()
-
+        val awgConfig = sb.toString()
         Log.d(TAG, "AWG Config generated (keys hidden)")
+        Log.d(TAG, "Config length: ${awgConfig.length} chars")
+
         return Config.parse(ByteArrayInputStream(awgConfig.toByteArray()))
     }
 
