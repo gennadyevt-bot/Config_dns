@@ -84,10 +84,20 @@ class MainActivity : AppCompatActivity() {
             when (menuItem.itemId) {
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.0 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.1 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
+        }
+
+        // Auto-connect: если включено и есть валидный сервер — подключаемся
+        val autoConnect = AutoConnectStorage(this)
+        if (autoConnect.isEnabled()) {
+            val validServer = servers.firstOrNull { hasValidConfig(it) }
+            validServer?.let {
+                selectedServer = it
+                requestVpnPermissionAndConnect(it)
+            }
         }
     }
 
