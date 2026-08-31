@@ -3,16 +3,13 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.widget.Button
-import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -27,10 +24,8 @@ class AppVpnActivity : AppCompatActivity() {
 
     private lateinit var rvApps: RecyclerView
     private lateinit var btnSave: Button
-    private lateinit var etSearch: EditText
     private lateinit var appVpnStorage: AppVpnStorage
-    private val allApps = mutableListOf<AppInfo>()
-    private val displayedApps = mutableListOf<AppInfo>()
+    private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,7 +37,6 @@ class AppVpnActivity : AppCompatActivity() {
 
         rvApps = findViewById(R.id.rvApps)
         btnSave = findViewById(R.id.btnSave)
-        etSearch = findViewById(R.id.etSearch)
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
@@ -51,14 +45,6 @@ class AppVpnActivity : AppCompatActivity() {
         }
 
         loadApps()
-
-        etSearch.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                filterApps(s?.toString() ?: "")
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
 
         btnSave.setOnClickListener {
             appVpnStorage.setSelectedPackages(selectedPackages)
@@ -78,31 +64,29 @@ class AppVpnActivity : AppCompatActivity() {
     private fun loadApps() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                // Только пользовательские (non-system) приложения, исключая сам Config
-                .filter {
-                    (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 &&
-                    it.packageName != packageName
+            // ВСЕ приложения с launcher intent (включая предустановленные YouTube, Instagram и т.д.)
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null)
+            launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+            val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, 0)
+
+            val appList = resolveList
+                .filter { it.activityInfo.packageName != packageName } // исключаем сам Config
+                .sortedBy { it.loadLabel(pm).toString().lowercase() }
+                .map { resolveInfo ->
+                    val pkg = resolveInfo.activityInfo.packageName
+                    AppInfo(
+                        packageName = pkg,
+                        appName = resolveInfo.loadLabel(pm).toString(),
+                        icon = resolveInfo.loadIcon(pm),
+                        isSelected = selectedPackages.contains(pkg)
+                    )
                 }
-                .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
 
-            val appList = installedApps.map { appInfo ->
-                val pkg = appInfo.packageName
-                AppInfo(
-                    packageName = pkg,
-                    appName = pm.getApplicationLabel(appInfo).toString(),
-                    icon = pm.getApplicationIcon(appInfo),
-                    isSelected = selectedPackages.contains(pkg)
-                )
-            }
-
-            allApps.clear()
-            allApps.addAll(appList)
-            displayedApps.clear()
-            displayedApps.addAll(appList)
+            apps.clear()
+            apps.addAll(appList)
 
             withContext(Dispatchers.Main) {
-                rvApps.adapter = AppListAdapter(displayedApps) { app, isChecked ->
+                rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
                     if (isChecked) {
                         selectedPackages.add(app.packageName)
                     } else {
@@ -111,20 +95,6 @@ class AppVpnActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    private fun filterApps(query: String) {
-        val lower = query.lowercase()
-        displayedApps.clear()
-        if (lower.isEmpty()) {
-            displayedApps.addAll(allApps)
-        } else {
-            displayedApps.addAll(allApps.filter {
-                it.appName.lowercase().contains(lower) ||
-                it.packageName.lowercase().contains(lower)
-            })
-        }
-        rvApps.adapter?.notifyDataSetChanged()
     }
 
     private fun hasUsageStatsPermission(): Boolean {
