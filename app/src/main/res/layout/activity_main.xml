@@ -90,16 +90,26 @@
 
     </FrameLayout>
 
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/navView"
-        android:layout_width="280dp"
+    <!-- Меню-окошко с закруглёнными краями -->
+    <FrameLayout
+        android:layout_width="240dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        android:background="#228B22"
-        app:headerLayout="@layout/nav_header"
-        app:menu="@menu/drawer_menu"
-        app:itemTextColor="@android:color/white"
-        app:itemIconSize="36dp"
-        app:itemBackground="@drawable/nav_item_bg" />
+        android:layout_marginTop="32dp"
+        android:layout_marginBottom="32dp"
+        android:layout_marginEnd="48dp"
+        android:background="@drawable/menu_container_bg">
+
+        <com.google.android.material.navigation.NavigationView
+            android:id="@+id/navView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/transparent"
+            app:headerLayout="@layout/nav_header"
+            app:menu="@menu/drawer_menu"
+            app:itemTextColor="@android:color/white"
+            app:itemBackground="@drawable/nav_item_bg" />
+
+    </FrameLayout>
 
 </androidx.drawerlayout.widget.DrawerLayout>
