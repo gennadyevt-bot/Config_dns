@@ -99,6 +99,7 @@
         app:headerLayout="@layout/nav_header"
         app:menu="@menu/drawer_menu"
         app:itemTextColor="@android:color/white"
+        app:itemIconSize="36dp"
         app:itemBackground="@drawable/nav_item_bg" />
 
 </androidx.drawerlayout.widget.DrawerLayout>
