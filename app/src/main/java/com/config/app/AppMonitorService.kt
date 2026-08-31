@@ -88,8 +88,6 @@ class AppMonitorService : Service() {
         validServer?.let { server ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    // Пересоздаём VpnManager — бэкенд AmneziaWG "умирает" после disconnect
-                    vpnManager = VpnManager(this@AppMonitorService)
                     vpnManager?.connect(server)
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
@@ -105,8 +103,6 @@ class AppMonitorService : Service() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 vpnManager?.disconnect()
-                // Пересоздаём бэкенд после disconnect
-                vpnManager = VpnManager(this@AppMonitorService)
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(this@AppMonitorService, "VPN отключён", Toast.LENGTH_SHORT).show()
                 }
