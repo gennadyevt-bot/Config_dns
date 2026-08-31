@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.net.VpnService
 import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.amnezia.awg.backend.Backend
 import org.amnezia.awg.backend.GoBackend
 import org.amnezia.awg.backend.NoopTunnelActionHandler
@@ -21,6 +25,7 @@ class VpnManager(private val context: Context) {
     var onServerChanged: ((ServerInfo?) -> Unit)? = null
 
     private var currentServer: ServerInfo? = null
+    private val scope = CoroutineScope(Dispatchers.IO)
 
     companion object {
         var globalStatus: VpnStatus = VpnStatus.DISCONNECTED
@@ -31,42 +36,61 @@ class VpnManager(private val context: Context) {
     }
 
     fun connect(server: ServerInfo) {
-        try {
-            currentServer = server
-            onServerChanged?.invoke(server)
-            updateStatus(VpnStatus.CONNECTING)
+        scope.launch {
+            try {
+                currentServer = server
+                withContext(Dispatchers.Main) {
+                    onServerChanged?.invoke(server)
+                    updateStatus(VpnStatus.CONNECTING)
+                }
 
-            val configString = buildConfigString(server)
-            android.util.Log.d("ConfigVPN", "Config string:\n$configString")
+                val configString = buildConfigString(server)
+                android.util.Log.d("ConfigVPN", "Config string:\n$configString")
 
-            val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
-            currentConfig = config
+                val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
+                currentConfig = config
 
-            tunnel = WgTunnel("config_${server.id}")
-            backend.setState(tunnel!!, Tunnel.State.UP, config)
+                tunnel = WgTunnel("config_${server.id}")
+                backend.setState(tunnel!!, Tunnel.State.UP, config)
 
-            updateStatus(VpnStatus.CONNECTED)
-            StopVpnWidget.updateWidget(context, VpnStatus.CONNECTED)
-        } catch (e: Exception) {
-            updateStatus(VpnStatus.ERROR)
-            StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
-            val err = e.message ?: e.toString()
-            showToast("Ошибка: $err")
-            android.util.Log.e("ConfigVPN", "Connect failed", e)
+                withContext(Dispatchers.Main) {
+                    updateStatus(VpnStatus.CONNECTED)
+                    StopVpnWidget.updateWidget(context, VpnStatus.CONNECTED)
+                }
+            } catch (e: Exception) {
+                val err = e.message ?: e.toString()
+                android.util.Log.e("ConfigVPN", "Connect failed", e)
+                withContext(Dispatchers.Main) {
+                    updateStatus(VpnStatus.ERROR)
+                    StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
+                    showToast("Ошибка: $err")
+                }
+            }
         }
     }
 
     fun disconnect() {
-        try {
-            updateStatus(VpnStatus.DISCONNECTING)
-            tunnel?.let { backend.setState(it, Tunnel.State.DOWN, currentConfig) }
-            updateStatus(VpnStatus.DISCONNECTED)
-            currentServer = null
-            onServerChanged?.invoke(null)
-            StopVpnWidget.updateWidget(context, VpnStatus.DISCONNECTED)
-        } catch (e: Exception) {
-            updateStatus(VpnStatus.ERROR)
-            StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
+        scope.launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    updateStatus(VpnStatus.DISCONNECTING)
+                }
+                tunnel?.let { backend.setState(it, Tunnel.State.DOWN, currentConfig) }
+                withContext(Dispatchers.Main) {
+                    updateStatus(VpnStatus.DISCONNECTED)
+                    currentServer = null
+                    onServerChanged?.invoke(null)
+                    StopVpnWidget.updateWidget(context, VpnStatus.DISCONNECTED)
+                }
+            } catch (e: Exception) {
+                val err = e.message ?: e.toString()
+                android.util.Log.e("ConfigVPN", "Disconnect failed", e)
+                withContext(Dispatchers.Main) {
+                    updateStatus(VpnStatus.ERROR)
+                    StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
+                    showToast("Ошибка: $err")
+                }
+            }
         }
     }
 
@@ -80,7 +104,6 @@ class VpnManager(private val context: Context) {
             appendLine("DNS = ${server.interfaceDns}")
             appendLine("PrivateKey = ${server.interfacePrivateKey}")
 
-            // AmneziaWG obfuscation — только если явно заданы и не равны 0
             if (server.jc.isNotEmpty() && server.jc != "0") appendLine("Jc = ${server.jc}")
             if (server.jmin.isNotEmpty() && server.jmin != "0") appendLine("Jmin = ${server.jmin}")
             if (server.jmax.isNotEmpty() && server.jmax != "0") appendLine("Jmax = ${server.jmax}")
@@ -108,8 +131,6 @@ class VpnManager(private val context: Context) {
     }
 
     private fun showToast(msg: String) {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-        }
+        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
     }
 }
