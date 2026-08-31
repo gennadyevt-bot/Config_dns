@@ -1,8 +1,13 @@
 package com.config.app
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -13,6 +18,7 @@ class DomainAccessibilityService : AccessibilityService() {
     private var domainStorage: DomainVpnStorage? = null
     private var lastTriggered = 0L
     private var lastUrl = ""
+    private var lastMatchedDomain = ""
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -28,21 +34,14 @@ class DomainAccessibilityService : AccessibilityService() {
         if (domains.isEmpty()) return
 
         val now = System.currentTimeMillis()
-        if (now - lastTriggered < 3000) return
+        if (now - lastTriggered < 5000) return
 
-        // Собираем URL из всех возможных источников
         var url = ""
-
-        // 1. Пробуем event.text (для некоторых браузеров URL приходит тут)
         val eventText = event.text?.joinToString(" ") ?: ""
         url = extractUrl(eventText)
-
-        // 2. Пробуем event.contentDescription
         if (url.isEmpty()) {
             url = extractUrl(event.contentDescription?.toString() ?: "")
         }
-
-        // 3. Пробуем rootInActiveWindow
         if (url.isEmpty()) {
             val root = rootInActiveWindow
             if (root != null) {
@@ -60,56 +59,73 @@ class DomainAccessibilityService : AccessibilityService() {
             url.contains(domain, ignoreCase = true)
         }
 
-        if (matchedDomain != null) {
+        if (matchedDomain != null && matchedDomain != lastMatchedDomain) {
+            lastMatchedDomain = matchedDomain
             lastTriggered = now
             android.util.Log.d("DomainVPN", "MATCHED domain: $matchedDomain")
+
             if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
-                CoroutineScope(Dispatchers.IO).launch {
-                    val servers = ServerStorage(this@DomainAccessibilityService).loadServers()
-                    val valid = servers.firstOrNull {
-                        it.interfacePrivateKey.isNotEmpty() &&
-                        it.peerPublicKey.isNotEmpty() &&
-                        it.peerEndpoint.isNotEmpty()
-                    }
-                    valid?.let {
-                        try {
-                            kotlinx.coroutines.delay(500)
-                            vpnManager?.connect(it)
-                            android.util.Log.d("DomainVPN", "VPN connected for domain: $matchedDomain")
-                        } catch (e: Exception) {
-                            android.util.Log.e("DomainVPN", "Auto-connect failed", e)
-                        }
-                    }
-                }
+                // Показываем уведомление с кнопкой "Подключить VPN"
+                showVpnNotification(matchedDomain, url)
+            } else {
+                android.util.Log.d("DomainVPN", "VPN already connected")
             }
         }
     }
 
     override fun onInterrupt() {}
 
+    private fun showVpnNotification(domain: String, url: String) {
+        val channelId = "domain_vpn_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Domain VPN",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(channel)
+        }
+
+        // Intent для подключения VPN
+        val connectIntent = Intent(this, VpnActionReceiver::class.java).apply {
+            action = "com.config.app.CONNECT_VPN"
+            putExtra("domain", domain)
+        }
+        val connectPending = PendingIntent.getBroadcast(
+            this, 0, connectIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Сайт требует VPN")
+            .setContentText("$domain обнаружен. Нажмите для подключения VPN.")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_menu_mylocation, "Подключить VPN", connectPending)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(2001, notification)
+    }
+
     private fun extractUrl(text: String): String {
         if (text.isEmpty()) return ""
-        // Ищем http:// или https://
         val httpRegex = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
         val match = httpRegex.find(text)
         if (match != null) return match.value
-
-        // Ищем домен вида domain.com
         val domainRegex = Regex("""[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}[^\s]*""")
         val domainMatch = domainRegex.find(text)
         if (domainMatch != null) return "https://" + domainMatch.value
-
         return ""
     }
 
     private fun findUrlInWindow(root: AccessibilityNodeInfo): String {
         val queue = java.util.ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
-
         while (queue.isNotEmpty()) {
             val node = queue.poll()
-
-            // Проверяем viewId на URL-related
             val viewId = node.viewIdResourceName ?: ""
             if (viewId.contains("url", ignoreCase = true) ||
                 viewId.contains("address", ignoreCase = true) ||
@@ -122,8 +138,6 @@ class DomainAccessibilityService : AccessibilityService() {
                     return extractUrl(result)
                 }
             }
-
-            // Проверяем text/contentDescription напрямую
             val text = node.text?.toString() ?: ""
             val desc = node.contentDescription?.toString() ?: ""
             for (candidate in listOf(text, desc)) {
@@ -133,7 +147,6 @@ class DomainAccessibilityService : AccessibilityService() {
                     if (extracted.isNotEmpty()) return extracted
                 }
             }
-
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i)
                 if (child != null) queue.add(child)

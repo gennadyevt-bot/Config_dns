@@ -93,5 +93,12 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/config_widget_info" />
         </receiver>
+            <receiver
+            android:name=".VpnActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.config.app.CONNECT_VPN" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
