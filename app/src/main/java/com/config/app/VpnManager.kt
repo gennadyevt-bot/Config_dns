@@ -37,6 +37,8 @@ class VpnManager(private val context: Context) {
             updateStatus(VpnStatus.CONNECTING)
 
             val configString = buildConfigString(server)
+            android.util.Log.d("ConfigVPN", "Config string:\n$configString")
+
             val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
             currentConfig = config
 
@@ -48,7 +50,9 @@ class VpnManager(private val context: Context) {
         } catch (e: Exception) {
             updateStatus(VpnStatus.ERROR)
             StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
-            showToast("Ошибка: ${e.message}")
+            val err = e.message ?: e.toString()
+            showToast("Ошибка: $err")
+            android.util.Log.e("ConfigVPN", "Connect failed", e)
         }
     }
 
@@ -76,6 +80,7 @@ class VpnManager(private val context: Context) {
             appendLine("DNS = ${server.interfaceDns}")
             appendLine("PrivateKey = ${server.interfacePrivateKey}")
 
+            // AmneziaWG obfuscation — только если явно заданы и не равны 0
             if (server.jc.isNotEmpty() && server.jc != "0") appendLine("Jc = ${server.jc}")
             if (server.jmin.isNotEmpty() && server.jmin != "0") appendLine("Jmin = ${server.jmin}")
             if (server.jmax.isNotEmpty() && server.jmax != "0") appendLine("Jmax = ${server.jmax}")
