@@ -7,11 +7,13 @@
     android:gravity="center"
     android:background="#1a5c00"
     android:padding="24dp">
+
     <ImageView
         android:layout_width="72dp"
         android:layout_height="72dp"
         android:src="@mipmap/ic_launcher_round"
         android:contentDescription="App icon" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -20,11 +22,5 @@
         android:textStyle="bold"
         android:textColor="@android:color/white"
         android:layout_marginTop="12dp" />
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="VPN Manager"
-        android:textSize="14sp"
-        android:textColor="#90EE90"
-        android:layout_marginTop="4dp" />
+
 </LinearLayout>
