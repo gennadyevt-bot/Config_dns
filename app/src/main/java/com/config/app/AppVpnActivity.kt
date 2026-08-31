@@ -52,7 +52,7 @@ class AppVpnActivity : AppCompatActivity() {
             appVpnStorage.setEnabled(enabled)
             if (enabled) {
                 AppMonitorService.start(this)
-                Toast.makeText(this, "App VPN enabled for ${selectedPackages.size} apps", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "App VPN enabled for " + selectedPackages.size + " apps", Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN disabled", Toast.LENGTH_SHORT).show()
@@ -115,7 +115,7 @@ class AppVpnActivity : AppCompatActivity() {
     private fun showPermissionDialog() {
         AlertDialog.Builder(this)
             .setTitle("Permission Required")
-            .setMessage("App VPN needs "Usage Access" permission to detect when selected apps are opened. Please enable it in settings.")
+            .setMessage("App VPN needs Usage Access permission to detect when selected apps are opened. Please enable it in settings.")
             .setPositiveButton("Open Settings") { _, _ ->
                 startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
