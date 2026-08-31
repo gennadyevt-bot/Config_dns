@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
@@ -65,7 +66,6 @@ class DomainAccessibilityService : AccessibilityService() {
             android.util.Log.d("DomainVPN", "MATCHED domain: $matchedDomain")
 
             if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
-                // Показываем уведомление с кнопкой "Подключить VPN"
                 showVpnNotification(matchedDomain, url)
             } else {
                 android.util.Log.d("DomainVPN", "VPN already connected")
@@ -87,13 +87,12 @@ class DomainAccessibilityService : AccessibilityService() {
             nm.createNotificationChannel(channel)
         }
 
-        // Intent для подключения VPN
-        val connectIntent = Intent(this, VpnActionReceiver::class.java).apply {
+        val connectIntent = Intent(applicationContext, VpnActionReceiver::class.java).apply {
             action = "com.config.app.CONNECT_VPN"
             putExtra("domain", domain)
         }
         val connectPending = PendingIntent.getBroadcast(
-            this, 0, connectIntent,
+            applicationContext, 0, connectIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
