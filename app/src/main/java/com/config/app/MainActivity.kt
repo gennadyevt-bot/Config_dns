@@ -13,9 +13,12 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.view.View
+import com.google.android.material.navigation.NavigationView
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTrafficDown: TextView
     private lateinit var tvTrafficUp: TextView
     private lateinit var ivMenu: ImageView
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var navView: NavigationView
 
     private var selectedServer: ServerInfo? = null
     private val servers = mutableListOf<ServerInfo>()
@@ -61,6 +66,8 @@ class MainActivity : AppCompatActivity() {
         tvTrafficDown = findViewById(R.id.tvTrafficDown)
         tvTrafficUp = findViewById(R.id.tvTrafficUp)
         ivMenu = findViewById(R.id.ivMenu)
+        drawerLayout = findViewById(R.id.drawerLayout)
+        navView = findViewById(R.id.navView)
 
         requestNotificationPermission()
         loadServers()
@@ -69,7 +76,17 @@ class MainActivity : AppCompatActivity() {
         updateUiState(VpnStatus.DISCONNECTED)
 
         ivMenu.setOnClickListener {
-            showMenuDialog()
+            drawerLayout.openDrawer(GravityCompat.START)
+        }
+
+        navView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.navBackup -> showBackupDialog()
+                R.id.navAutoConnect -> showAutoConnectDialog()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.0 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
+            }
+            drawerLayout.closeDrawer(GravityCompat.START)
+            true
         }
     }
 
@@ -77,7 +94,6 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         val saved = serverStorage.loadServers()
         if (saved.isEmpty()) {
-            // Create 6 empty slots
             repeat(6) { index ->
                 servers.add(ServerInfo(
                     id = "slot_$index",
@@ -246,7 +262,6 @@ class MainActivity : AppCompatActivity() {
         val etEndpoint = view.findViewById<EditText>(R.id.etEndpoint)
         val etPrivateKey = view.findViewById<EditText>(R.id.etPrivateKey)
         val etPublicKey = view.findViewById<EditText>(R.id.etPublicKey)
-        val etPresharedKey = view.findViewById<EditText>(R.id.etPresharedKey)
         val etAddress = view.findViewById<EditText>(R.id.etAddress)
         val etJc = view.findViewById<EditText>(R.id.etJc)
         val etJmin = view.findViewById<EditText>(R.id.etJmin)
@@ -260,13 +275,11 @@ class MainActivity : AppCompatActivity() {
 
         tvTitle.text = "Edit Config"
         tvSubtitle.text = server.name
-
         etName.setText(server.name)
-        if (server.peerEndpoint.isNotEmpty()) etEndpoint.setText(server.peerEndpoint)
-        if (server.interfacePrivateKey.isNotEmpty()) etPrivateKey.setText(server.interfacePrivateKey)
-        if (server.peerPublicKey.isNotEmpty()) etPublicKey.setText(server.peerPublicKey)
-        if (server.peerPresharedKey.isNotEmpty()) etPresharedKey.setText(server.peerPresharedKey)
-        if (server.interfaceAddress.isNotEmpty()) etAddress.setText(server.interfaceAddress)
+        etEndpoint.setText(server.peerEndpoint)
+        etPrivateKey.setText(server.interfacePrivateKey)
+        etPublicKey.setText(server.peerPublicKey)
+        etAddress.setText(server.interfaceAddress)
         etJc.setText(server.jc)
         etJmin.setText(server.jmin)
         etJmax.setText(server.jmax)
@@ -277,14 +290,13 @@ class MainActivity : AppCompatActivity() {
         etH3.setText(server.h3)
         etH4.setText(server.h4)
 
-        val dialog = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setView(view)
             .setPositiveButton("Save") { _, _ ->
                 val name = etName.text.toString().trim()
                 val endpoint = etEndpoint.text.toString().trim()
                 val privateKey = etPrivateKey.text.toString().trim()
                 val publicKey = etPublicKey.text.toString().trim()
-                val presharedKey = etPresharedKey.text.toString().trim()
                 val address = etAddress.text.toString().trim().ifEmpty { "192.168.6.54/32" }
                 val jc = etJc.text.toString().trim().ifEmpty { "5" }
                 val jmin = etJmin.text.toString().trim().ifEmpty { "50" }
@@ -296,18 +308,18 @@ class MainActivity : AppCompatActivity() {
                 val h3 = etH3.text.toString().trim().ifEmpty { "3" }
                 val h4 = etH4.text.toString().trim().ifEmpty { "4" }
 
-                if (endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
-                    Toast.makeText(this, "Fill required fields", Toast.LENGTH_SHORT).show()
+                if (name.isEmpty() || endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
+                    Toast.makeText(this, "Fill all required fields", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
                 val updated = server.copy(
-                    name = name.ifEmpty { server.name },
-                    peerEndpoint = endpoint,
+                    name = name,
+                    interfaceAddress = address,
+                    interfaceDns = "1.1.1.1, 8.8.8.8",
                     interfacePrivateKey = privateKey,
                     peerPublicKey = publicKey,
-                    peerPresharedKey = presharedKey,
-                    interfaceAddress = address,
+                    peerEndpoint = endpoint,
                     jc = jc,
                     jmin = jmin,
                     jmax = jmax,
@@ -321,118 +333,31 @@ class MainActivity : AppCompatActivity() {
                 servers[position] = updated
                 serverAdapter.notifyItemChanged(position)
                 serverStorage.saveServers(servers)
-                Toast.makeText(this, "Config saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Config updated", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.setButton(AlertDialog.BUTTON_NEUTRAL, "Delete") { _, _ ->
-            servers[position] = ServerInfo(
-                id = server.id,
-                name = "Empty Slot",
-                interfaceAddress = "",
-                interfacePrivateKey = "",
-                peerPublicKey = "",
-                peerEndpoint = ""
-            )
-            serverAdapter.notifyItemChanged(position)
-            serverStorage.saveServers(servers)
-            Toast.makeText(this, "Config deleted", Toast.LENGTH_SHORT).show()
-        }
-
-        dialog.show()
+            .setNegativeButton("Delete") { _, _ ->
+                servers[position] = ServerInfo(
+                    id = "slot_$position",
+                    name = "Empty Slot",
+                    interfaceAddress = "",
+                    interfacePrivateKey = "",
+                    peerPublicKey = "",
+                    peerEndpoint = ""
+                )
+                serverAdapter.notifyItemChanged(position)
+                serverStorage.saveServers(servers)
+                Toast.makeText(this, "Config deleted", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
     }
 
     private fun updateUiState(status: VpnStatus) {
-        StopVpnWidget.updateWidget(this, status)
-        when (status) {
-            VpnStatus.CONNECTED -> {
-                tvStatus.text = "Active"
-                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_light))
-                startTrafficMonitor()
-            }
-            VpnStatus.CONNECTING -> {
-                tvStatus.text = "Connecting..."
-                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_orange_light))
-            }
-            VpnStatus.SWITCHING -> {
-                tvStatus.text = "Switching..."
-                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_orange_light))
-            }
-            VpnStatus.DISCONNECTING -> {
-                tvStatus.text = "Disconnecting..."
-                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_orange_light))
-            }
-            else -> {
-                tvStatus.text = "Disconnected"
-                tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
-                stopTrafficMonitor()
-            }
+        tvStatus.text = when (status) {
+            VpnStatus.CONNECTED -> "Connected"
+            VpnStatus.CONNECTING -> "Connecting…"
+            VpnStatus.DISCONNECTED -> "Disconnected"
         }
-    }
-
-    private var trafficHandler: android.os.Handler? = null
-    private var trafficRunnable: Runnable? = null
-
-    private fun startTrafficMonitor() {
-        trafficHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        trafficRunnable = object : Runnable {
-            override fun run() {
-                val stats = vpnManager.getTrafficStats()
-                tvTrafficDown.text = "↓ ${formatBytes(stats.rxBytes)}/s"
-                tvTrafficUp.text = "↑ ${formatBytes(stats.txBytes)}/s"
-                trafficHandler?.postDelayed(this, 1000)
-            }
-        }
-        trafficHandler?.post(trafficRunnable!!)
-    }
-
-    private fun stopTrafficMonitor() {
-        trafficRunnable?.let { trafficHandler?.removeCallbacks(it) }
-        trafficHandler = null
-        trafficRunnable = null
-        tvTrafficDown.text = "↓ 0 B/s"
-        tvTrafficUp.text = "↑ 0 B/s"
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        return when {
-            bytes >= 1024 * 1024 * 1024 -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
-            bytes >= 1024 * 1024 -> "%.2f MB".format(bytes / (1024.0 * 1024.0))
-            bytes >= 1024 -> "%.2f KB".format(bytes / 1024.0)
-            else -> "$bytes B"
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (vpnManager.getStatus() == VpnStatus.CONNECTED) {
-            vpnManager.disconnect()
-        }
-    }
-
-    private fun showMenuDialog() {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_menu, null)
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_NoActionBar)
-            .setView(dialogView)
-            .create()
-
-        dialogView.findViewById<View>(R.id.btnBackup).setOnClickListener {
-            showBackupDialog()
-            dialog.dismiss()
-        }
-
-        dialogView.findViewById<View>(R.id.btnAutoConnect).setOnClickListener {
-            showAutoConnectDialog()
-            dialog.dismiss()
-        }
-
-        dialogView.findViewById<View>(R.id.btnAbout).setOnClickListener {
-            Toast.makeText(this, "Config v1.0.0 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-
-        dialog.show()
     }
 
     private fun showBackupDialog() {
