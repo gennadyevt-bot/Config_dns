@@ -84,13 +84,12 @@ class MainActivity : AppCompatActivity() {
             when (menuItem.itemId) {
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.1 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v1.0.2 | AmneziaWG + Kotlin", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
         }
 
-        // Auto-connect: если включено и есть валидный сервер — подключаемся
         val autoConnect = AutoConnectStorage(this)
         if (autoConnect.isEnabled()) {
             val validServer = servers.firstOrNull { hasValidConfig(it) }
@@ -105,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         val saved = serverStorage.loadServers()
         if (saved.isEmpty()) {
-            // Demo config — VPNJantit Premium USA
+            // Demo config — VPNJantit Premium USA (plain WireGuard, no AmneziaWG obfuscation)
             servers.add(ServerInfo(
                 id = "slot_0",
                 name = "VPNJantit Premium USA",
@@ -115,7 +114,10 @@ class MainActivity : AppCompatActivity() {
                 peerPublicKey = "5EhTY/DjbqjL4M7v3KaMOl84FVt/ZtOnAKIGpQy4GSY=",
                 peerEndpoint = "premiusa2.vpnjantit.com:1024",
                 peerAllowedIPs = "0.0.0.0/0",
-                peerPersistentKeepalive = "25"
+                peerPersistentKeepalive = "25",
+                jc = "0", jmin = "0", jmax = "0",
+                s1 = "0", s2 = "0",
+                h1 = "0", h2 = "0", h3 = "0", h4 = "0"
             ))
             repeat(5) { index ->
                 servers.add(ServerInfo(
@@ -236,15 +238,15 @@ class MainActivity : AppCompatActivity() {
                 val privateKey = etPrivateKey.text.toString().trim()
                 val publicKey = etPublicKey.text.toString().trim()
                 val address = etAddress.text.toString().trim().ifEmpty { "192.168.6.54/32" }
-                val jc = etJc.text.toString().trim().ifEmpty { "5" }
-                val jmin = etJmin.text.toString().trim().ifEmpty { "50" }
-                val jmax = etJmax.text.toString().trim().ifEmpty { "1000" }
-                val s1 = etS1.text.toString().trim().ifEmpty { "50" }
-                val s2 = etS2.text.toString().trim().ifEmpty { "100" }
-                val h1 = etH1.text.toString().trim().ifEmpty { "1" }
-                val h2 = etH2.text.toString().trim().ifEmpty { "2" }
-                val h3 = etH3.text.toString().trim().ifEmpty { "3" }
-                val h4 = etH4.text.toString().trim().ifEmpty { "4" }
+                val jc = etJc.text.toString().trim().ifEmpty { "0" }
+                val jmin = etJmin.text.toString().trim().ifEmpty { "0" }
+                val jmax = etJmax.text.toString().trim().ifEmpty { "0" }
+                val s1 = etS1.text.toString().trim().ifEmpty { "0" }
+                val s2 = etS2.text.toString().trim().ifEmpty { "0" }
+                val h1 = etH1.text.toString().trim().ifEmpty { "0" }
+                val h2 = etH2.text.toString().trim().ifEmpty { "0" }
+                val h3 = etH3.text.toString().trim().ifEmpty { "0" }
+                val h4 = etH4.text.toString().trim().ifEmpty { "0" }
 
                 if (name.isEmpty() || endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
                     Toast.makeText(this, "Fill all required fields", Toast.LENGTH_SHORT).show()
@@ -321,15 +323,15 @@ class MainActivity : AppCompatActivity() {
                 val privateKey = etPrivateKey.text.toString().trim()
                 val publicKey = etPublicKey.text.toString().trim()
                 val address = etAddress.text.toString().trim().ifEmpty { "192.168.6.54/32" }
-                val jc = etJc.text.toString().trim().ifEmpty { "5" }
-                val jmin = etJmin.text.toString().trim().ifEmpty { "50" }
-                val jmax = etJmax.text.toString().trim().ifEmpty { "1000" }
-                val s1 = etS1.text.toString().trim().ifEmpty { "50" }
-                val s2 = etS2.text.toString().trim().ifEmpty { "100" }
-                val h1 = etH1.text.toString().trim().ifEmpty { "1" }
-                val h2 = etH2.text.toString().trim().ifEmpty { "2" }
-                val h3 = etH3.text.toString().trim().ifEmpty { "3" }
-                val h4 = etH4.text.toString().trim().ifEmpty { "4" }
+                val jc = etJc.text.toString().trim().ifEmpty { "0" }
+                val jmin = etJmin.text.toString().trim().ifEmpty { "0" }
+                val jmax = etJmax.text.toString().trim().ifEmpty { "0" }
+                val s1 = etS1.text.toString().trim().ifEmpty { "0" }
+                val s2 = etS2.text.toString().trim().ifEmpty { "0" }
+                val h1 = etH1.text.toString().trim().ifEmpty { "0" }
+                val h2 = etH2.text.toString().trim().ifEmpty { "0" }
+                val h3 = etH3.text.toString().trim().ifEmpty { "0" }
+                val h4 = etH4.text.toString().trim().ifEmpty { "0" }
 
                 if (name.isEmpty() || endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
                     Toast.makeText(this, "Fill all required fields", Toast.LENGTH_SHORT).show()
