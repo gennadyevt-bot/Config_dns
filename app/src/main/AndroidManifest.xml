@@ -31,6 +31,11 @@
             android:exported="false"
             android:label="App VPN" />
 
+        <activity
+            android:name=".DomainVpnActivity"
+            android:exported="false"
+            android:label="Domain VPN" />
+
         <service
             android:name="org.amnezia.awg.backend.GoBackend$VpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
@@ -46,6 +51,18 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <service
+            android:name=".DomainAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
