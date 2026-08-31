@@ -90,20 +90,21 @@
 
     </FrameLayout>
 
-    <!-- Меню-окошко без шапки, с закруглёнными краями -->
+    <!-- Компактное меню-окошко: wrap_content высота, отступы со всех сторон -->
     <FrameLayout
         android:layout_width="260dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="start"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|top"
         android:layout_marginTop="48dp"
-        android:layout_marginBottom="48dp"
+        android:layout_marginStart="8dp"
         android:layout_marginEnd="48dp"
+        android:layout_marginBottom="120dp"
         android:background="@drawable/menu_container_bg">
 
         <com.google.android.material.navigation.NavigationView
             android:id="@+id/navView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:background="@android:color/transparent"
             app:menu="@menu/drawer_menu"
             app:itemTextColor="@android:color/white"
