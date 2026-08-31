@@ -95,9 +95,21 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         val saved = serverStorage.loadServers()
         if (saved.isEmpty()) {
-            repeat(6) { index ->
+            // Demo config — VPNJantit Premium USA
+            servers.add(ServerInfo(
+                id = "slot_0",
+                name = "VPNJantit Premium USA",
+                interfaceAddress = "192.168.6.75/32",
+                interfaceDns = "1.1.1.1, 8.8.8.8",
+                interfacePrivateKey = "WLxO4K6sMjbqK4xclRnSkwnUzBMbTHhMoITliWk2zHs=",
+                peerPublicKey = "5EhTY/DjbqjL4M7v3KaMOl84FVt/ZtOnAKIGpQy4GSY=",
+                peerEndpoint = "premiusa2.vpnjantit.com:1024",
+                peerAllowedIPs = "0.0.0.0/0",
+                peerPersistentKeepalive = "25"
+            ))
+            repeat(5) { index ->
                 servers.add(ServerInfo(
-                    id = "slot_$index",
+                    id = "slot_${index + 1}",
                     name = "Empty Slot",
                     interfaceAddress = "",
                     interfacePrivateKey = "",
