@@ -6,20 +6,23 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#228B22">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center_horizontal"
             android:padding="16dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="DNS config"
+                android:text="config"
                 android:textSize="36sp"
                 android:textStyle="bold"
                 android:textColor="@android:color/white"
@@ -28,6 +31,7 @@
                 android:shadowDy="3"
                 android:shadowRadius="4"
                 android:layout_marginTop="20dp" />
+
             <TextView
                 android:id="@+id/tvStatus"
                 android:layout_width="wrap_content"
@@ -36,12 +40,14 @@
                 android:textSize="14sp"
                 android:textColor="#ccffcc"
                 android:layout_marginTop="6dp" />
+
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:layout_marginTop="6dp"
                 android:gravity="center">
+
                 <TextView
                     android:id="@+id/tvTrafficDown"
                     android:layout_width="wrap_content"
@@ -50,6 +56,7 @@
                     android:textSize="12sp"
                     android:textColor="#90EE90"
                     android:layout_marginEnd="12dp" />
+
                 <TextView
                     android:id="@+id/tvTrafficUp"
                     android:layout_width="wrap_content"
@@ -58,6 +65,7 @@
                     android:textSize="12sp"
                     android:textColor="#FF6B6B" />
             </LinearLayout>
+
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvServers"
                 android:layout_width="match_parent"
@@ -65,7 +73,9 @@
                 android:layout_weight="1"
                 android:layout_marginTop="16dp"
                 android:overScrollMode="always" />
+
         </LinearLayout>
+
         <ImageView
             android:id="@+id/ivMenu"
             android:layout_width="28dp"
@@ -77,7 +87,9 @@
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="Menu" />
+
     </FrameLayout>
+
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/navView"
         android:layout_width="280dp"
@@ -87,6 +99,7 @@
         app:headerLayout="@layout/nav_header"
         app:menu="@menu/drawer_menu"
         app:itemTextColor="@android:color/white"
-        app:itemIconTint="@android:color/white"
+        app:itemIconTint="@null"
         app:itemBackground="@drawable/nav_item_bg" />
+
 </androidx.drawerlayout.widget.DrawerLayout>
