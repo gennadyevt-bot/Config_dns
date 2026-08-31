@@ -90,13 +90,13 @@
 
     </FrameLayout>
 
-    <!-- Меню-окошко с закруглёнными краями -->
+    <!-- Меню-окошко без шапки, с закруглёнными краями -->
     <FrameLayout
-        android:layout_width="240dp"
+        android:layout_width="260dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        android:layout_marginTop="32dp"
-        android:layout_marginBottom="32dp"
+        android:layout_marginTop="48dp"
+        android:layout_marginBottom="48dp"
         android:layout_marginEnd="48dp"
         android:background="@drawable/menu_container_bg">
 
@@ -105,10 +105,14 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@android:color/transparent"
-            app:headerLayout="@layout/nav_header"
             app:menu="@menu/drawer_menu"
             app:itemTextColor="@android:color/white"
-            app:itemBackground="@drawable/nav_item_bg" />
+            app:itemIconTint="@android:color/white"
+            app:itemTextAppearance="@style/NavMenuText"
+            app:itemBackground="@drawable/nav_item_bg"
+            app:itemIconSize="32dp"
+            app:itemHorizontalPadding="20dp"
+            app:itemVerticalPadding="16dp" />
 
     </FrameLayout>
 
