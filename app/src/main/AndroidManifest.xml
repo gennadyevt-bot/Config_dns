@@ -46,7 +46,7 @@
             android:label="Domain VPN" />
 
         <service
-            android:name="org.amnezia.awg.backend.GoBackend$VpnService"
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="true"
             android:foregroundServiceType="specialUse">
