@@ -20,7 +20,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,7 +36,6 @@ class AppVpnActivity : AppCompatActivity() {
     private val selectedPackages = mutableSetOf<String>()
     private val excludedPackages = mutableSetOf<String>()
     private var isVpnMode = true
-    private var loadJob: Job? = null
 
     private val blacklist = setOf(
         "com.android.stk", "com.hihonor.android.clone", "com.hihonor.android.fmradio",
@@ -81,8 +79,6 @@ class AppVpnActivity : AppCompatActivity() {
             loadApps()
         }
 
-        // Устанавливаем начальное состояние
-        rbVpnOn.isChecked = true
         updateModeUI()
         loadApps()
 
@@ -112,9 +108,7 @@ class AppVpnActivity : AppCompatActivity() {
     }
 
     private fun loadApps() {
-        // Отменяем предыдущую загрузку
-        loadJob?.cancel()
-        loadJob = CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val launcherIntent = Intent(Intent.ACTION_MAIN, null)
             launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
@@ -156,11 +150,6 @@ class AppVpnActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        loadJob?.cancel()
     }
 
     private fun hasUsageStatsPermission(): Boolean {
