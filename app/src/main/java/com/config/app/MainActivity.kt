@@ -3,6 +3,9 @@ package com.config.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -22,6 +25,10 @@ import android.view.View
 import com.google.android.material.navigation.NavigationView
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
 
 class MainActivity : AppCompatActivity() {
 
@@ -70,6 +77,12 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Неверный формат QR-кода", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { decodeQrFromImage(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -246,6 +259,43 @@ class MainActivity : AppCompatActivity() {
         qrScannerLauncher.launch(options)
     }
 
+    private fun pickImageForQr() {
+        imagePickerLauncher.launch("image/*")
+    }
+
+    private fun decodeQrFromImage(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+
+            if (bitmap == null) {
+                Toast.makeText(this, "Не удалось загрузить изображение", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val width = bitmap.width
+            val height = bitmap.height
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+            val source = RGBLuminanceSource(width, height, pixels)
+            val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
+            val reader = MultiFormatReader()
+            val result = reader.decode(binaryBitmap)
+
+            val config = WgConfigParser.parse(result.text)
+            if (config != null) {
+                fillDialogFields(config)
+                Toast.makeText(this, "QR из файла распознан: ${config.name}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Неверный формат QR-кода в файле", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "QR не найден на изображении", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun showAddServerDialog(server: ServerInfo, position: Int) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_add_server, null)
         currentDialogView = view
@@ -270,10 +320,12 @@ class MainActivity : AppCompatActivity() {
         val etH3 = view.findViewById<EditText>(R.id.etH3)
         val etH4 = view.findViewById<EditText>(R.id.etH4)
         val btnScanQr = view.findViewById<Button>(R.id.btnScanQr)
+        val btnPickImage = view.findViewById<Button>(R.id.btnPickImage)
 
         btnScanQr.setOnClickListener { startQrScan() }
+        btnPickImage.setOnClickListener { pickImageForQr() }
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setView(view)
             .setPositiveButton("Add") { _, _ ->
                 val name = etName.text.toString().trim()
@@ -347,6 +399,7 @@ class MainActivity : AppCompatActivity() {
         val etH3 = view.findViewById<EditText>(R.id.etH3)
         val etH4 = view.findViewById<EditText>(R.id.etH4)
         val btnScanQr = view.findViewById<Button>(R.id.btnScanQr)
+        val btnPickImage = view.findViewById<Button>(R.id.btnPickImage)
 
         etName.setText(server.name)
         etEndpoint.setText(server.peerEndpoint)
@@ -368,8 +421,9 @@ class MainActivity : AppCompatActivity() {
         etH4.setText(server.h4)
 
         btnScanQr.setOnClickListener { startQrScan() }
+        btnPickImage.setOnClickListener { pickImageForQr() }
 
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setView(view)
             .setPositiveButton("Save") { _, _ ->
                 val updated = server.copy(
@@ -437,7 +491,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAutoConnectDialog() {
         val storage = AutoConnectStorage(this)
-        val current = storage.isEnabled()
         AlertDialog.Builder(this)
             .setTitle("Auto Connect")
             .setMessage("Automatically connect to first valid server on app start?")
