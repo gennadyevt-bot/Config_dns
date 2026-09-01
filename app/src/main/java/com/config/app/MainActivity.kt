@@ -19,9 +19,10 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.view.View
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.android.material.navigation.NavigationView
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 class MainActivity : AppCompatActivity() {
 
@@ -57,18 +58,6 @@ class MainActivity : AppCompatActivity() {
     ) { isGranted ->
         if (!isGranted) {
             Toast.makeText(this, "Notifications disabled — background mode may be unstable", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
-        if (result.contents != null) {
-            val config = WgConfigParser.parse(result.contents)
-            if (config != null) {
-                fillDialogFields(config)
-                Toast.makeText(this, "QR конфиг распознан: ${config.name}", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Неверный формат QR-кода", Toast.LENGTH_LONG).show()
-            }
         }
     }
 
@@ -237,6 +226,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startQrScan() {
+        val moduleInstall = ModuleInstall.getClient(this)
+        val moduleInstallRequest = ModuleInstallRequest.newBuilder()
+            .addApi(GmsBarcodeScanning.getClient(this))
+            .build()
+
+        moduleInstall.installModules(moduleInstallRequest)
+            .addOnSuccessListener {
+                val scanner = GmsBarcodeScanning.getClient(this)
+                scanner.startScan()
+                    .addOnSuccessListener { barcode ->
+                        val rawValue = barcode.rawValue
+                        if (rawValue != null) {
+                            val config = WgConfigParser.parse(rawValue)
+                            if (config != null) {
+                                fillDialogFields(config)
+                                Toast.makeText(this, "QR распознан: ${config.name}", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this, "Неверный формат QR-кода", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    .addOnCanceledListener { }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Ошибка сканера: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Не удалось загрузить сканер: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
     private fun showAddServerDialog(server: ServerInfo, position: Int) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_add_server, null)
         currentDialogView = view
@@ -262,14 +283,7 @@ class MainActivity : AppCompatActivity() {
         val etH4 = view.findViewById<EditText>(R.id.etH4)
         val btnScanQr = view.findViewById<Button>(R.id.btnScanQr)
 
-        btnScanQr.setOnClickListener {
-            val options = ScanOptions()
-            options.setPrompt("Наведите камеру на QR-код конфига")
-            options.setBeepEnabled(true)
-            options.setOrientationLocked(true)
-            options.setCameraId(0)
-            qrScannerLauncher.launch(options)
-        }
+        btnScanQr.setOnClickListener { startQrScan() }
 
         AlertDialog.Builder(this)
             .setView(view)
@@ -365,14 +379,7 @@ class MainActivity : AppCompatActivity() {
         etH3.setText(server.h3)
         etH4.setText(server.h4)
 
-        btnScanQr.setOnClickListener {
-            val options = ScanOptions()
-            options.setPrompt("Наведите камеру на QR-код конфига")
-            options.setBeepEnabled(true)
-            options.setOrientationLocked(true)
-            options.setCameraId(0)
-            qrScannerLauncher.launch(options)
-        }
+        btnScanQr.setOnClickListener { startQrScan() }
 
         AlertDialog.Builder(this)
             .setView(view)
@@ -452,7 +459,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAutoConnectDialog() {
         val storage = AutoConnectStorage(this)
-        val current = storage.isEnabled()
         AlertDialog.Builder(this)
             .setTitle("Auto Connect")
             .setMessage("Automatically connect to first valid server on app start?")

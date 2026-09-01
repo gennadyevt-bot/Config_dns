@@ -10,7 +10,6 @@
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
-    <uses-permission android:name="android.permission.CAMERA" />
 
     <queries>
         <intent>
@@ -45,14 +44,6 @@
             android:name=".DomainVpnActivity"
             android:exported="false"
             android:label="Domain VPN" />
-
-        <activity
-            android:name="com.journeyapps.barcodescanner.CaptureActivity"
-            android:screenOrientation="portrait"
-            android:theme="@style/zxing_CaptureTheme"
-            android:exported="false"
-            tools:replace="screenOrientation"
-            xmlns:tools="http://schemas.android.com/tools" />
 
         <service
             android:name=".AppMonitorService"
