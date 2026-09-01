@@ -110,30 +110,32 @@ class AppVpnActivity : AppCompatActivity() {
     private fun loadApps() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
-            val launcherIntent = Intent(Intent.ACTION_MAIN, null)
-            launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PackageManager.MATCH_ALL
-            } else {
-                PackageManager.GET_META_DATA
+            val appList = try {
+                // Пробуем getInstalledApplications (надёжнее на Honor/Huawei)
+                val appsInfo = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                appsInfo
+                    .filter { it.packageName != packageName }
+                    .filter { it.packageName !in blacklist }
+                    .filter {
+                        // Только приложения с launcher activity
+                        val launchIntent = pm.getLaunchIntentForPackage(it.packageName)
+                        launchIntent != null
+                    }
+                    .sortedBy { it.loadLabel(pm).toString().lowercase() }
+                    .map { appInfo ->
+                        val pkg = appInfo.packageName
+                        val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
+                        AppInfo(
+                            packageName = pkg,
+                            appName = appInfo.loadLabel(pm).toString(),
+                            icon = appInfo.loadIcon(pm),
+                            isSelected = isSelected
+                        )
+                    }
+            } catch (e: Exception) {
+                android.util.Log.e("AppVpnActivity", "Failed to load apps: ${e.message}")
+                emptyList()
             }
-            val resolveList: List<ResolveInfo> = pm.queryIntentActivities(launcherIntent, flags)
-
-            val appList = resolveList
-                .filter { it.activityInfo.packageName != packageName }
-                .filter { it.activityInfo.packageName !in blacklist }
-                .sortedBy { it.loadLabel(pm).toString().lowercase() }
-                .map { resolveInfo ->
-                    val pkg = resolveInfo.activityInfo.packageName
-                    val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
-                    AppInfo(
-                        packageName = pkg,
-                        appName = resolveInfo.loadLabel(pm).toString(),
-                        icon = resolveInfo.loadIcon(pm),
-                        isSelected = isSelected
-                    )
-                }
 
             apps.clear()
             apps.addAll(appList)
