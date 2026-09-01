@@ -8,17 +8,19 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ProgressBar
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButtonToggleGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,31 +30,29 @@ class AppVpnActivity : AppCompatActivity() {
 
     private lateinit var rvApps: RecyclerView
     private lateinit var btnSave: Button
-    private lateinit var tvMode: TextView
-    private lateinit var radioGroup: RadioGroup
-    private lateinit var rbVpnOn: RadioButton
-    private lateinit var rbVpnOff: RadioButton
+    private lateinit var etSearch: EditText
+    private lateinit var tvCounter: TextView
+    private lateinit var toggleMode: MaterialButtonToggleGroup
     private lateinit var progressBar: ProgressBar
     private lateinit var appVpnStorage: AppVpnStorage
-    private val apps = mutableListOf<AppInfo>()
+
+    private val allApps = mutableListOf<AppInfo>()
+    private val filteredApps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
-    private val excludedPackages = mutableSetOf<String>()
-    private var isVpnMode = true
+
+    private var isIncludeMode = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_app_vpn)
 
         appVpnStorage = AppVpnStorage(this)
-        selectedPackages.addAll(appVpnStorage.getSelectedPackages())
-        excludedPackages.addAll(appVpnStorage.getExcludedPackages())
 
         rvApps = findViewById(R.id.rvApps)
         btnSave = findViewById(R.id.btnSave)
-        tvMode = findViewById(R.id.tvMode)
-        radioGroup = findViewById(R.id.radioGroup)
-        rbVpnOn = findViewById(R.id.rbVpnOn)
-        rbVpnOff = findViewById(R.id.rbVpnOff)
+        etSearch = findViewById(R.id.etSearch)
+        tvCounter = findViewById(R.id.tvCounter)
+        toggleMode = findViewById(R.id.toggleMode)
         progressBar = findViewById(R.id.progressBar)
 
         rvApps.layoutManager = LinearLayoutManager(this)
@@ -62,19 +62,44 @@ class AppVpnActivity : AppCompatActivity() {
             return
         }
 
-        radioGroup.setOnCheckedChangeListener { _, checkedId ->
-            isVpnMode = (checkedId == R.id.rbVpnOn)
-            updateModeUI()
-            loadApps()
+        val savedSelected = appVpnStorage.getSelectedPackages()
+        val savedExcluded = appVpnStorage.getExcludedPackages()
+        isIncludeMode = savedExcluded.isEmpty()
+
+        if (isIncludeMode) {
+            selectedPackages.addAll(savedSelected)
+            toggleMode.check(R.id.btnModeInclude)
+        } else {
+            selectedPackages.addAll(savedExcluded)
+            toggleMode.check(R.id.btnModeExclude)
         }
 
-        updateModeUI()
-        loadApps()
+        toggleMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                isIncludeMode = (checkedId == R.id.btnModeInclude)
+                selectedPackages.clear()
+                updateCounter()
+                loadApps()
+            }
+        }
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filterApps(s?.toString() ?: "")
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         btnSave.setOnClickListener {
-            appVpnStorage.setSelectedPackages(selectedPackages)
-            appVpnStorage.setExcludedPackages(excludedPackages)
-            val enabled = selectedPackages.isNotEmpty() || excludedPackages.isNotEmpty()
+            if (isIncludeMode) {
+                appVpnStorage.setSelectedPackages(selectedPackages)
+                appVpnStorage.setExcludedPackages(emptySet())
+            } else {
+                appVpnStorage.setSelectedPackages(emptySet())
+                appVpnStorage.setExcludedPackages(selectedPackages)
+            }
+            val enabled = selectedPackages.isNotEmpty()
             appVpnStorage.setEnabled(enabled)
 
             if (enabled) {
@@ -82,13 +107,16 @@ class AppVpnActivity : AppCompatActivity() {
                 if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
                     autoConnectVpn()
                 }
-                Toast.makeText(this, "Сохранено: " + selectedPackages.size + " через VPN, " + excludedPackages.size + " без VPN", Toast.LENGTH_SHORT).show()
+                val modeText = if (isIncludeMode) "через VPN" else "обход VPN"
+                Toast.makeText(this, "Сохранено: ${selectedPackages.size} приложений ($modeText)", Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN отключен", Toast.LENGTH_SHORT).show()
             }
             finish()
         }
+
+        loadApps()
     }
 
     private fun autoConnectVpn() {
@@ -101,10 +129,6 @@ class AppVpnActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateModeUI() {
-        tvMode.text = if (isVpnMode) "Режим: ЧЕРЕЗ VPN" else "Режим: БЕЗ VPN"
-    }
-
     private fun loadApps() {
         progressBar.visibility = View.VISIBLE
         rvApps.visibility = View.GONE
@@ -114,76 +138,68 @@ class AppVpnActivity : AppCompatActivity() {
             val appList = mutableListOf<AppInfo>()
 
             try {
-                val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
-                android.util.Log.d("AppVpn", "Total packages: ${packages.size}")
+                val mainIntent = Intent(Intent.ACTION_MAIN, null)
+                mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+                val seen = mutableSetOf<String>()
 
-                for (pkgInfo in packages) {
-                    val pkg = pkgInfo.packageName
-                    try {
-                        if (pkg == packageName) continue
+                for (ri in resolveInfos) {
+                    val pkg = ri.activityInfo.packageName
+                    if (pkg == packageName || seen.contains(pkg)) continue
+                    seen.add(pkg)
 
-                        val appInfo = pkgInfo.applicationInfo ?: continue
-                        val label = pm.getApplicationLabel(appInfo).toString()
-                        val icon = pm.getApplicationIcon(appInfo)
-                        val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
+                    val label = ri.loadLabel(pm).toString()
+                    val icon = ri.loadIcon(pm)
+                    val isSelected = selectedPackages.contains(pkg)
 
-                        appList.add(AppInfo(
-                            packageName = pkg,
-                            appName = label,
-                            icon = icon,
-                            isSelected = isSelected
-                        ))
-                    } catch (e: Exception) {
-                        android.util.Log.w("AppVpn", "Skip $pkg: ${e.message}")
-                    }
+                    appList.add(AppInfo(pkg, label, icon, isSelected))
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AppVpn", "getInstalledPackages failed: ${e.message}", e)
-            }
-
-            // Fallback если пусто
-            if (appList.isEmpty()) {
-                try {
-                    val mainIntent = Intent(Intent.ACTION_MAIN, null)
-                    mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-                    val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
-                    val seen = mutableSetOf<String>()
-                    for (ri in resolveInfos) {
-                        val pkg = ri.activityInfo.packageName
-                        if (pkg == packageName || seen.contains(pkg)) continue
-                        seen.add(pkg)
-                        val label = ri.loadLabel(pm).toString()
-                        val icon = ri.loadIcon(pm)
-                        val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
-                        appList.add(AppInfo(pkg, label, icon, isSelected))
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("AppVpn", "Fallback failed: ${e.message}", e)
-                }
+                android.util.Log.e("AppVpn", "Load apps failed: ${e.message}", e)
             }
 
             appList.sortBy { it.appName.lowercase() }
-            apps.clear()
-            apps.addAll(appList)
-            android.util.Log.d("AppVpn", "Final count: ${apps.size}")
 
             withContext(Dispatchers.Main) {
+                allApps.clear()
+                allApps.addAll(appList)
+                filteredApps.clear()
+                filteredApps.addAll(appList)
                 progressBar.visibility = View.GONE
                 rvApps.visibility = View.VISIBLE
-                if (apps.isEmpty()) {
-                    Toast.makeText(this@AppVpnActivity, "Список приложений пуст", Toast.LENGTH_LONG).show()
-                }
-                rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
-                    if (isVpnMode) {
-                        if (isChecked) selectedPackages.add(app.packageName)
-                        else selectedPackages.remove(app.packageName)
-                    } else {
-                        if (isChecked) excludedPackages.add(app.packageName)
-                        else excludedPackages.remove(app.packageName)
-                    }
-                }
+                updateCounter()
+                setupAdapter()
             }
         }
+    }
+
+    private fun setupAdapter() {
+        rvApps.adapter = AppListAdapter(filteredApps) { app, isChecked ->
+            if (isChecked) {
+                selectedPackages.add(app.packageName)
+            } else {
+                selectedPackages.remove(app.packageName)
+            }
+            allApps.find { it.packageName == app.packageName }?.isSelected = isChecked
+            updateCounter()
+        }
+    }
+
+    private fun filterApps(query: String) {
+        val q = query.lowercase().trim()
+        filteredApps.clear()
+        if (q.isEmpty()) {
+            filteredApps.addAll(allApps)
+        } else {
+            filteredApps.addAll(allApps.filter {
+                it.appName.lowercase().contains(q) || it.packageName.lowercase().contains(q)
+            })
+        }
+        rvApps.adapter?.notifyDataSetChanged()
+    }
+
+    private fun updateCounter() {
+        tvCounter.text = "Выбрано: ${selectedPackages.size}"
     }
 
     private fun hasUsageStatsPermission(): Boolean {
