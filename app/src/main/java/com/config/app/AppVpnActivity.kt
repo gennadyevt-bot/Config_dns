@@ -4,7 +4,6 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -30,7 +29,6 @@ import kotlinx.coroutines.withContext
 class AppVpnActivity : AppCompatActivity() {
 
     private lateinit var rvApps: RecyclerView
-    private lateinit var rvPopular: RecyclerView
     private lateinit var btnSave: Button
     private lateinit var etSearch: EditText
     private lateinit var tvCounter: TextView
@@ -40,7 +38,6 @@ class AppVpnActivity : AppCompatActivity() {
 
     private val allApps = mutableListOf<AppInfo>()
     private val filteredApps = mutableListOf<AppInfo>()
-    private val popularApps = mutableListOf<PopularApp>()
     private val selectedPackages = mutableSetOf<String>()
 
     private var isIncludeMode = true
@@ -52,7 +49,6 @@ class AppVpnActivity : AppCompatActivity() {
         appVpnStorage = AppVpnStorage(this)
 
         rvApps = findViewById(R.id.rvApps)
-        rvPopular = findViewById(R.id.rvPopular)
         btnSave = findViewById(R.id.btnSave)
         etSearch = findViewById(R.id.etSearch)
         tvCounter = findViewById(R.id.tvCounter)
@@ -60,7 +56,6 @@ class AppVpnActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
 
         rvApps.layoutManager = LinearLayoutManager(this)
-        rvPopular.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
 
         if (!hasUsageStatsPermission()) {
             showPermissionDialog()
@@ -70,15 +65,21 @@ class AppVpnActivity : AppCompatActivity() {
         val savedSelected = appVpnStorage.getSelectedPackages()
         val savedExcluded = appVpnStorage.getExcludedPackages()
         isIncludeMode = savedExcluded.isEmpty()
-        if (isIncludeMode) selectedPackages.addAll(savedSelected)
-        else selectedPackages.addAll(savedExcluded)
 
-        toggleMode.check(if (isIncludeMode) R.id.btnModeInclude else R.id.btnModeExclude)
+        if (isIncludeMode) {
+            selectedPackages.addAll(savedSelected)
+            toggleMode.check(R.id.btnModeInclude)
+        } else {
+            selectedPackages.addAll(savedExcluded)
+            toggleMode.check(R.id.btnModeExclude)
+        }
+
         toggleMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (isChecked) {
                 isIncludeMode = (checkedId == R.id.btnModeInclude)
+                selectedPackages.clear()
                 updateCounter()
-                updatePopularVisuals()
+                loadApps()
             }
         }
 
@@ -107,7 +108,7 @@ class AppVpnActivity : AppCompatActivity() {
                     autoConnectVpn()
                 }
                 val modeText = if (isIncludeMode) "через VPN" else "обход VPN"
-                Toast.makeText(this, "Сохранено: ${selectedPackages.size} ($modeText)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Сохранено: ${selectedPackages.size} приложений ($modeText)", Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN отключен", Toast.LENGTH_SHORT).show()
@@ -115,8 +116,7 @@ class AppVpnActivity : AppCompatActivity() {
             finish()
         }
 
-        setupPopularApps()
-        loadAppsOptimized()
+        loadApps()
     }
 
     private fun autoConnectVpn() {
@@ -129,125 +129,59 @@ class AppVpnActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupPopularApps() {
-        val pm = packageManager
-        val popularData = listOf(
-            "com.google.android.youtube" to "YouTube",
-            "org.telegram.messenger" to "Telegram",
-            "com.instagram.android" to "Instagram",
-            "com.zhiliaoapp.musically" to "TikTok",
-            "com.whatsapp" to "WhatsApp",
-            "com.android.chrome" to "Chrome",
-            "com.twitter.android" to "Twitter",
-            "com.facebook.katana" to "Facebook",
-            "com.vkontakte.android" to "VK",
-            "com.discord" to "Discord",
-            "com.spotify.music" to "Spotify"
-        )
-
-        popularApps.clear()
-        for ((pkg, name) in popularData) {
-            val installed = try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e: Exception) { false }
-
-            val icon = if (installed) {
-                try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null }
-            } else null
-
-            popularApps.add(PopularApp(pkg, name, icon, installed))
-        }
-
-        rvPopular.adapter = PopularAppAdapter(popularApps, selectedPackages) { app, isChecked ->
-            if (!app.isInstalled) {
-                Toast.makeText(this, "${app.appName} не установлен", Toast.LENGTH_SHORT).show()
-                return@PopularAppAdapter
-            }
-            if (isChecked) selectedPackages.add(app.packageName)
-            else selectedPackages.remove(app.packageName)
-            updateCounter()
-            updateMainListSelection(app.packageName, isChecked)
-        }
-    }
-
-    private fun loadAppsOptimized() {
+    private fun loadApps() {
         progressBar.visibility = View.VISIBLE
-
-        val cached = appVpnStorage.getCachedAppList()
-        if (cached != null) {
-            try {
-                val arr = org.json.JSONArray(cached)
-                allApps.clear()
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val pkg = obj.getString("pkg")
-                    allApps.add(AppInfo(
-                        packageName = pkg,
-                        appName = obj.getString("name"),
-                        icon = null,
-                        isSelected = selectedPackages.contains(pkg)
-                    ))
-                }
-                filteredApps.clear()
-                filteredApps.addAll(allApps)
-                setupAdapter()
-                progressBar.visibility = View.GONE
-                rvApps.visibility = View.VISIBLE
-                updateCounter()
-            } catch (e: Exception) {
-                // corrupted cache
-            }
-        }
+        rvApps.visibility = View.GONE
 
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = mutableListOf<AppInfo>()
-            val jsonArr = org.json.JSONArray()
 
             try {
-                val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                for (appInfo in packages) {
-                    val pkg = appInfo.packageName
-                    if (pkg == packageName) continue
-                    if (pm.getLaunchIntentForPackage(pkg) == null) continue
+                val mainIntent = Intent(Intent.ACTION_MAIN, null)
+                mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+                val seen = mutableSetOf<String>()
 
-                    val label = pm.getApplicationLabel(appInfo).toString()
-                    val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
+                for (ri in resolveInfos) {
+                    val pkg = ri.activityInfo.packageName
+                    if (pkg == packageName || seen.contains(pkg)) continue
+                    seen.add(pkg)
+
+                    val label = ri.loadLabel(pm).toString()
+                    val icon = ri.loadIcon(pm)
                     val isSelected = selectedPackages.contains(pkg)
 
                     appList.add(AppInfo(pkg, label, icon, isSelected))
-
-                    val obj = org.json.JSONObject()
-                    obj.put("pkg", pkg)
-                    obj.put("name", label)
-                    jsonArr.put(obj)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AppVpn", "Load error: ${e.message}")
+                android.util.Log.e("AppVpn", "Load apps failed: ${e.message}", e)
             }
 
             appList.sortBy { it.appName.lowercase() }
-            appVpnStorage.cacheAppList(jsonArr.toString())
 
             withContext(Dispatchers.Main) {
                 allApps.clear()
                 allApps.addAll(appList)
-                filterApps(etSearch.text.toString())
+                filteredApps.clear()
+                filteredApps.addAll(appList)
                 progressBar.visibility = View.GONE
                 rvApps.visibility = View.VISIBLE
                 updateCounter()
+                setupAdapter()
             }
         }
     }
 
     private fun setupAdapter() {
         rvApps.adapter = AppListAdapter(filteredApps) { app, isChecked ->
-            if (isChecked) selectedPackages.add(app.packageName)
-            else selectedPackages.remove(app.packageName)
+            if (isChecked) {
+                selectedPackages.add(app.packageName)
+            } else {
+                selectedPackages.remove(app.packageName)
+            }
             allApps.find { it.packageName == app.packageName }?.isSelected = isChecked
             updateCounter()
-            updatePopularVisuals()
         }
     }
 
@@ -265,21 +199,7 @@ class AppVpnActivity : AppCompatActivity() {
     }
 
     private fun updateCounter() {
-        val mode = if (isIncludeMode) "через VPN" else "обход VPN"
-        tvCounter.text = "Выбрано: ${selectedPackages.size} ($mode)"
-    }
-
-    private fun updatePopularVisuals() {
-        rvPopular.adapter?.notifyDataSetChanged()
-    }
-
-    private fun updateMainListSelection(pkg: String, isChecked: Boolean) {
-        val app = allApps.find { it.packageName == pkg }
-        if (app != null) {
-            app.isSelected = isChecked
-            val idx = filteredApps.indexOfFirst { it.packageName == pkg }
-            if (idx >= 0) rvApps.adapter?.notifyItemChanged(idx)
-        }
+        tvCounter.text = "Выбрано: ${selectedPackages.size}"
     }
 
     private fun hasUsageStatsPermission(): Boolean {

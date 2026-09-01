@@ -34,12 +34,7 @@ class AppListAdapter(
         fun bind(app: AppInfo) {
             tvName.text = app.appName
             tvPackage.text = app.packageName
-
-            if (app.icon != null) {
-                ivIcon.setImageDrawable(app.icon)
-            } else {
-                ivIcon.setImageResource(android.R.drawable.sym_def_app_icon)
-            }
+            ivIcon.setImageDrawable(app.icon)
 
             switch.setOnCheckedChangeListener(null)
             switch.isChecked = app.isSelected

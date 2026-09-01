@@ -32,14 +32,6 @@ class AppVpnStorage(context: Context) {
         return prefs.getBoolean(ENABLED_KEY, false)
     }
 
-    fun cacheAppList(json: String) {
-        prefs.edit().putString("app_list_cache", json).apply()
-    }
-
-    fun getCachedAppList(): String? {
-        return prefs.getString("app_list_cache", null)
-    }
-
     companion object {
         private const val PREFS_NAME = "app_vpn_prefs"
         private const val SELECTED_KEY = "selected_packages"
