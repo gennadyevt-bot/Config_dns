@@ -3,8 +3,8 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -111,27 +111,30 @@ class AppVpnActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = try {
-                // Надёжный способ: queryIntentActivities с MAIN/LAUNCHER
-                val mainIntent = Intent(Intent.ACTION_MAIN, null)
-                mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-                val resolveInfos = pm.queryIntentActivities(mainIntent, PackageManager.MATCH_ALL)
+                // Способ 1: getInstalledApplications — самый надёжный
+                val appsInfo = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                android.util.Log.d("AppVpnActivity", "Total installed apps: ${appsInfo.size}")
 
-                // Группируем по packageName (убираем дубликаты activity)
-                val seenPackages = mutableSetOf<String>()
-                resolveInfos
-                    .filter { it.activityInfo.packageName != packageName }
-                    .filter { it.activityInfo.packageName !in blacklist }
+                val filtered = appsInfo
+                    .filter { it.packageName != packageName }
+                    .filter { it.packageName !in blacklist }
+                    .filter {
+                        // Показываем пользовательские + некоторые системные, но не чисто системные
+                        (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                        (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                    }
+
+                android.util.Log.d("AppVpnActivity", "After filter: ${filtered.size}")
+
+                filtered
                     .sortedBy { it.loadLabel(pm).toString().lowercase() }
-                    .mapNotNull { resolveInfo ->
-                        val pkg = resolveInfo.activityInfo.packageName
-                        if (seenPackages.contains(pkg)) return@mapNotNull null
-                        seenPackages.add(pkg)
-
+                    .map { appInfo ->
+                        val pkg = appInfo.packageName
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
                         AppInfo(
                             packageName = pkg,
-                            appName = resolveInfo.loadLabel(pm).toString(),
-                            icon = resolveInfo.loadIcon(pm),
+                            appName = appInfo.loadLabel(pm).toString(),
+                            icon = appInfo.loadIcon(pm),
                             isSelected = isSelected
                         )
                     }
@@ -142,7 +145,7 @@ class AppVpnActivity : AppCompatActivity() {
 
             apps.clear()
             apps.addAll(appList)
-            android.util.Log.d("AppVpnActivity", "Loaded ${apps.size} apps")
+            android.util.Log.d("AppVpnActivity", "Final apps list size: ${apps.size}")
 
             withContext(Dispatchers.Main) {
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
