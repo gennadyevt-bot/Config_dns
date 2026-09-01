@@ -427,26 +427,17 @@ class MainActivity : AppCompatActivity() {
         val backupManager = ServerBackupManager(this)
         AlertDialog.Builder(this)
             .setTitle("Backup")
-            .setItems(arrayOf("Export", "Import")) { _, which ->
-                when (which) {
-                    0 -> backupManager.exportConfigs(servers)
-                    1 -> {
-                        val imported = backupManager.importConfigs()
-                        if (imported != null) {
-                            servers.clear()
-                            servers.addAll(imported)
-                            serverStorage.saveServers(servers)
-                            serverAdapter.notifyDataSetChanged()
-                            Toast.makeText(this, "Imported ${imported.size} configs", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
+            .setMessage("Share all configs as JSON file?")
+            .setPositiveButton("Share") { _, _ ->
+                backupManager.shareBackup()
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun showAutoConnectDialog() {
         val storage = AutoConnectStorage(this)
+        val current = storage.isEnabled()
         AlertDialog.Builder(this)
             .setTitle("Auto Connect")
             .setMessage("Automatically connect to first valid server on app start?")
@@ -467,11 +458,13 @@ class MainActivity : AppCompatActivity() {
             VpnStatus.CONNECTING -> "Status: CONNECTING..."
             VpnStatus.CONNECTED -> "Status: CONNECTED"
             VpnStatus.DISCONNECTING -> "Status: DISCONNECTING..."
+            VpnStatus.SWITCHING -> "Status: SWITCHING..."
             VpnStatus.ERROR -> "Status: ERROR"
         }
         val color = when (status) {
             VpnStatus.CONNECTED -> android.graphics.Color.GREEN
             VpnStatus.CONNECTING -> android.graphics.Color.YELLOW
+            VpnStatus.SWITCHING -> android.graphics.Color.YELLOW
             VpnStatus.ERROR -> android.graphics.Color.RED
             else -> android.graphics.Color.GRAY
         }
