@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
@@ -19,6 +20,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.view.View
 import com.google.android.material.navigation.NavigationView
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,6 +39,9 @@ class MainActivity : AppCompatActivity() {
     private var selectedServer: ServerInfo? = null
     private val servers = mutableListOf<ServerInfo>()
 
+    private var currentDialogView: View? = null
+    private var currentDialogPosition: Int = -1
+
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -51,6 +57,18 @@ class MainActivity : AppCompatActivity() {
     ) { isGranted ->
         if (!isGranted) {
             Toast.makeText(this, "Notifications disabled — background mode may be unstable", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            val config = WgConfigParser.parse(result.contents)
+            if (config != null) {
+                fillDialogFields(config)
+                Toast.makeText(this, "QR конфиг распознан: ${config.name}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Неверный формат QR-кода", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -86,7 +104,7 @@ class MainActivity : AppCompatActivity() {
                 R.id.navDomainVpn -> startActivity(android.content.Intent(this, DomainVpnActivity::class.java))
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v4.3.2 | WireGuard + Kotlin", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v4.4.0 | WireGuard + QR", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
@@ -221,11 +239,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAddServerDialog(server: ServerInfo, position: Int) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_add_server, null)
+        currentDialogView = view
+        currentDialogPosition = position
+
         val etName = view.findViewById<EditText>(R.id.etName)
         val etEndpoint = view.findViewById<EditText>(R.id.etEndpoint)
         val etPrivateKey = view.findViewById<EditText>(R.id.etPrivateKey)
         val etPublicKey = view.findViewById<EditText>(R.id.etPublicKey)
         val etAddress = view.findViewById<EditText>(R.id.etAddress)
+        val etDns = view.findViewById<EditText>(R.id.etDns)
+        val etPresharedKey = view.findViewById<EditText>(R.id.etPresharedKey)
+        val etAllowedIPs = view.findViewById<EditText>(R.id.etAllowedIPs)
+        val etPersistentKeepalive = view.findViewById<EditText>(R.id.etPersistentKeepalive)
         val etJc = view.findViewById<EditText>(R.id.etJc)
         val etJmin = view.findViewById<EditText>(R.id.etJmin)
         val etJmax = view.findViewById<EditText>(R.id.etJmax)
@@ -235,6 +260,16 @@ class MainActivity : AppCompatActivity() {
         val etH2 = view.findViewById<EditText>(R.id.etH2)
         val etH3 = view.findViewById<EditText>(R.id.etH3)
         val etH4 = view.findViewById<EditText>(R.id.etH4)
+        val btnScanQr = view.findViewById<Button>(R.id.btnScanQr)
+
+        btnScanQr.setOnClickListener {
+            val options = ScanOptions()
+            options.setPrompt("Наведите камеру на QR-код конфига")
+            options.setBeepEnabled(true)
+            options.setOrientationLocked(true)
+            options.setCameraId(0)
+            qrScannerLauncher.launch(options)
+        }
 
         AlertDialog.Builder(this)
             .setView(view)
@@ -244,6 +279,10 @@ class MainActivity : AppCompatActivity() {
                 val privateKey = etPrivateKey.text.toString().trim()
                 val publicKey = etPublicKey.text.toString().trim()
                 val address = etAddress.text.toString().trim().ifEmpty { "192.168.6.54/32" }
+                val dns = etDns.text.toString().trim().ifEmpty { "1.1.1.1, 8.8.8.8" }
+                val presharedKey = etPresharedKey.text.toString().trim()
+                val allowedIPs = etAllowedIPs.text.toString().trim().ifEmpty { "0.0.0.0/0" }
+                val persistentKeepalive = etPersistentKeepalive.text.toString().trim().ifEmpty { "25" }
                 val jc = etJc.text.toString().trim().ifEmpty { "0" }
                 val jmin = etJmin.text.toString().trim().ifEmpty { "0" }
                 val jmax = etJmax.text.toString().trim().ifEmpty { "0" }
@@ -254,46 +293,48 @@ class MainActivity : AppCompatActivity() {
                 val h3 = etH3.text.toString().trim().ifEmpty { "0" }
                 val h4 = etH4.text.toString().trim().ifEmpty { "0" }
 
-                if (name.isEmpty() || endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
-                    Toast.makeText(this, "Fill all required fields", Toast.LENGTH_SHORT).show()
+                if (privateKey.isEmpty() || publicKey.isEmpty() || endpoint.isEmpty()) {
+                    Toast.makeText(this, "PrivateKey, PublicKey и Endpoint обязательны", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
                 val updated = server.copy(
-                    name = name,
+                    name = name.ifEmpty { "Server ${position + 1}" },
                     interfaceAddress = address,
-                    interfaceDns = "1.1.1.1, 8.8.8.8",
+                    interfaceDns = dns,
                     interfacePrivateKey = privateKey,
                     peerPublicKey = publicKey,
+                    peerPresharedKey = presharedKey,
                     peerEndpoint = endpoint,
-                    jc = jc,
-                    jmin = jmin,
-                    jmax = jmax,
-                    s1 = s1,
-                    s2 = s2,
-                    h1 = h1,
-                    h2 = h2,
-                    h3 = h3,
-                    h4 = h4
+                    peerAllowedIPs = allowedIPs,
+                    peerPersistentKeepalive = persistentKeepalive,
+                    jc = jc, jmin = jmin, jmax = jmax,
+                    s1 = s1, s2 = s2,
+                    h1 = h1, h2 = h2, h3 = h3, h4 = h4
                 )
                 servers[position] = updated
-                serverAdapter.notifyItemChanged(position)
                 serverStorage.saveServers(servers)
-                Toast.makeText(this, "Config saved", Toast.LENGTH_SHORT).show()
+                serverAdapter.notifyItemChanged(position)
+                Toast.makeText(this, "Config added", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun showEditServerDialog(server: ServerInfo, position: Int) {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_edit_server, null)
-        val tvTitle = view.findViewById<TextView>(R.id.tvDialogTitle)
-        val tvSubtitle = view.findViewById<TextView>(R.id.tvDialogSubtitle)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_add_server, null)
+        currentDialogView = view
+        currentDialogPosition = position
+
         val etName = view.findViewById<EditText>(R.id.etName)
         val etEndpoint = view.findViewById<EditText>(R.id.etEndpoint)
         val etPrivateKey = view.findViewById<EditText>(R.id.etPrivateKey)
         val etPublicKey = view.findViewById<EditText>(R.id.etPublicKey)
         val etAddress = view.findViewById<EditText>(R.id.etAddress)
+        val etDns = view.findViewById<EditText>(R.id.etDns)
+        val etPresharedKey = view.findViewById<EditText>(R.id.etPresharedKey)
+        val etAllowedIPs = view.findViewById<EditText>(R.id.etAllowedIPs)
+        val etPersistentKeepalive = view.findViewById<EditText>(R.id.etPersistentKeepalive)
         val etJc = view.findViewById<EditText>(R.id.etJc)
         val etJmin = view.findViewById<EditText>(R.id.etJmin)
         val etJmax = view.findViewById<EditText>(R.id.etJmax)
@@ -303,14 +344,17 @@ class MainActivity : AppCompatActivity() {
         val etH2 = view.findViewById<EditText>(R.id.etH2)
         val etH3 = view.findViewById<EditText>(R.id.etH3)
         val etH4 = view.findViewById<EditText>(R.id.etH4)
+        val btnScanQr = view.findViewById<Button>(R.id.btnScanQr)
 
-        tvTitle.text = "Edit Config"
-        tvSubtitle.text = server.name
         etName.setText(server.name)
         etEndpoint.setText(server.peerEndpoint)
         etPrivateKey.setText(server.interfacePrivateKey)
         etPublicKey.setText(server.peerPublicKey)
         etAddress.setText(server.interfaceAddress)
+        etDns.setText(server.interfaceDns)
+        etPresharedKey.setText(server.peerPresharedKey)
+        etAllowedIPs.setText(server.peerAllowedIPs)
+        etPersistentKeepalive.setText(server.peerPersistentKeepalive)
         etJc.setText(server.jc)
         etJmin.setText(server.jmin)
         etJmax.setText(server.jmax)
@@ -321,106 +365,122 @@ class MainActivity : AppCompatActivity() {
         etH3.setText(server.h3)
         etH4.setText(server.h4)
 
+        btnScanQr.setOnClickListener {
+            val options = ScanOptions()
+            options.setPrompt("Наведите камеру на QR-код конфига")
+            options.setBeepEnabled(true)
+            options.setOrientationLocked(true)
+            options.setCameraId(0)
+            qrScannerLauncher.launch(options)
+        }
+
         AlertDialog.Builder(this)
             .setView(view)
             .setPositiveButton("Save") { _, _ ->
-                val name = etName.text.toString().trim()
-                val endpoint = etEndpoint.text.toString().trim()
-                val privateKey = etPrivateKey.text.toString().trim()
-                val publicKey = etPublicKey.text.toString().trim()
-                val address = etAddress.text.toString().trim().ifEmpty { "192.168.6.54/32" }
-                val jc = etJc.text.toString().trim().ifEmpty { "0" }
-                val jmin = etJmin.text.toString().trim().ifEmpty { "0" }
-                val jmax = etJmax.text.toString().trim().ifEmpty { "0" }
-                val s1 = etS1.text.toString().trim().ifEmpty { "0" }
-                val s2 = etS2.text.toString().trim().ifEmpty { "0" }
-                val h1 = etH1.text.toString().trim().ifEmpty { "0" }
-                val h2 = etH2.text.toString().trim().ifEmpty { "0" }
-                val h3 = etH3.text.toString().trim().ifEmpty { "0" }
-                val h4 = etH4.text.toString().trim().ifEmpty { "0" }
-
-                if (name.isEmpty() || endpoint.isEmpty() || privateKey.isEmpty() || publicKey.isEmpty()) {
-                    Toast.makeText(this, "Fill all required fields", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-
                 val updated = server.copy(
-                    name = name,
-                    interfaceAddress = address,
-                    interfaceDns = "1.1.1.1, 8.8.8.8",
-                    interfacePrivateKey = privateKey,
-                    peerPublicKey = publicKey,
-                    peerEndpoint = endpoint,
-                    jc = jc,
-                    jmin = jmin,
-                    jmax = jmax,
-                    s1 = s1,
-                    s2 = s2,
-                    h1 = h1,
-                    h2 = h2,
-                    h3 = h3,
-                    h4 = h4
+                    name = etName.text.toString().trim().ifEmpty { server.name },
+                    interfaceAddress = etAddress.text.toString().trim().ifEmpty { server.interfaceAddress },
+                    interfaceDns = etDns.text.toString().trim().ifEmpty { server.interfaceDns },
+                    interfacePrivateKey = etPrivateKey.text.toString().trim().ifEmpty { server.interfacePrivateKey },
+                    peerPublicKey = etPublicKey.text.toString().trim().ifEmpty { server.peerPublicKey },
+                    peerPresharedKey = etPresharedKey.text.toString().trim(),
+                    peerEndpoint = etEndpoint.text.toString().trim().ifEmpty { server.peerEndpoint },
+                    peerAllowedIPs = etAllowedIPs.text.toString().trim().ifEmpty { server.peerAllowedIPs },
+                    peerPersistentKeepalive = etPersistentKeepalive.text.toString().trim().ifEmpty { server.peerPersistentKeepalive },
+                    jc = etJc.text.toString().trim().ifEmpty { "0" },
+                    jmin = etJmin.text.toString().trim().ifEmpty { "0" },
+                    jmax = etJmax.text.toString().trim().ifEmpty { "0" },
+                    s1 = etS1.text.toString().trim().ifEmpty { "0" },
+                    s2 = etS2.text.toString().trim().ifEmpty { "0" },
+                    h1 = etH1.text.toString().trim().ifEmpty { "0" },
+                    h2 = etH2.text.toString().trim().ifEmpty { "0" },
+                    h3 = etH3.text.toString().trim().ifEmpty { "0" },
+                    h4 = etH4.text.toString().trim().ifEmpty { "0" }
                 )
                 servers[position] = updated
-                serverAdapter.notifyItemChanged(position)
                 serverStorage.saveServers(servers)
+                serverAdapter.notifyItemChanged(position)
                 Toast.makeText(this, "Config updated", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Delete") { _, _ ->
-                servers[position] = ServerInfo(
-                    id = "slot_$position",
-                    name = "Empty Slot",
-                    interfaceAddress = "",
-                    interfacePrivateKey = "",
-                    peerPublicKey = "",
-                    peerEndpoint = ""
-                )
-                serverAdapter.notifyItemChanged(position)
-                serverStorage.saveServers(servers)
-                Toast.makeText(this, "Config deleted", Toast.LENGTH_SHORT).show()
-            }
-            .setNeutralButton("Cancel", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun updateUiState(status: VpnStatus) {
-        tvStatus.text = when (status) {
-            VpnStatus.CONNECTED -> "Connected"
-            VpnStatus.CONNECTING -> "Connecting…"
-            VpnStatus.DISCONNECTED -> "Disconnected"
-            VpnStatus.DISCONNECTING -> "Disconnecting…"
-            VpnStatus.SWITCHING -> "Switching…"
-            VpnStatus.ERROR -> "Error"
-        }
+    private fun fillDialogFields(config: ServerInfo) {
+        val view = currentDialogView ?: return
+        view.findViewById<EditText>(R.id.etName).setText(config.name)
+        view.findViewById<EditText>(R.id.etEndpoint).setText(config.peerEndpoint)
+        view.findViewById<EditText>(R.id.etPrivateKey).setText(config.interfacePrivateKey)
+        view.findViewById<EditText>(R.id.etPublicKey).setText(config.peerPublicKey)
+        view.findViewById<EditText>(R.id.etAddress).setText(config.interfaceAddress)
+        view.findViewById<EditText>(R.id.etDns).setText(config.interfaceDns)
+        view.findViewById<EditText>(R.id.etPresharedKey).setText(config.peerPresharedKey)
+        view.findViewById<EditText>(R.id.etAllowedIPs).setText(config.peerAllowedIPs)
+        view.findViewById<EditText>(R.id.etPersistentKeepalive).setText(config.peerPersistentKeepalive)
+        view.findViewById<EditText>(R.id.etJc).setText(config.jc)
+        view.findViewById<EditText>(R.id.etJmin).setText(config.jmin)
+        view.findViewById<EditText>(R.id.etJmax).setText(config.jmax)
+        view.findViewById<EditText>(R.id.etS1).setText(config.s1)
+        view.findViewById<EditText>(R.id.etS2).setText(config.s2)
+        view.findViewById<EditText>(R.id.etH1).setText(config.h1)
+        view.findViewById<EditText>(R.id.etH2).setText(config.h2)
+        view.findViewById<EditText>(R.id.etH3).setText(config.h3)
+        view.findViewById<EditText>(R.id.etH4).setText(config.h4)
     }
 
     private fun showBackupDialog() {
         val backupManager = ServerBackupManager(this)
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Backup")
-            .setMessage("Export or import configs?")
-            .setPositiveButton("Export") { _, _ ->
-                backupManager.shareBackup()
-                Toast.makeText(this, "Configs exported", Toast.LENGTH_SHORT).show()
+            .setItems(arrayOf("Export", "Import")) { _, which ->
+                when (which) {
+                    0 -> backupManager.exportConfigs(servers)
+                    1 -> {
+                        val imported = backupManager.importConfigs()
+                        if (imported != null) {
+                            servers.clear()
+                            servers.addAll(imported)
+                            serverStorage.saveServers(servers)
+                            serverAdapter.notifyDataSetChanged()
+                            Toast.makeText(this, "Imported ${imported.size} configs", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
-            .setNegativeButton("Import") { _, _ ->
-                Toast.makeText(this, "Import: select .json file", Toast.LENGTH_SHORT).show()
-            }
-            .setNeutralButton("Cancel", null)
             .show()
     }
 
     private fun showAutoConnectDialog() {
         val storage = AutoConnectStorage(this)
-        val enabled = storage.isEnabled()
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        val current = storage.isEnabled()
+        AlertDialog.Builder(this)
             .setTitle("Auto Connect")
-            .setMessage("Auto-connect on app open.\n\nStatus: ${if (enabled) "ON" else "OFF"}")
-            .setPositiveButton(if (enabled) "Disable" else "Enable") { _, _ ->
-                storage.setEnabled(!enabled)
-                Toast.makeText(this, "Auto Connect: ${if (!enabled) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+            .setMessage("Automatically connect to first valid server on app start?")
+            .setPositiveButton("Enable") { _, _ ->
+                storage.setEnabled(true)
+                Toast.makeText(this, "Auto connect enabled", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Disable") { _, _ ->
+                storage.setEnabled(false)
+                Toast.makeText(this, "Auto connect disabled", Toast.LENGTH_SHORT).show()
+            }
             .show()
+    }
+
+    private fun updateUiState(status: VpnStatus) {
+        tvStatus.text = when (status) {
+            VpnStatus.DISCONNECTED -> "Status: DISCONNECTED"
+            VpnStatus.CONNECTING -> "Status: CONNECTING..."
+            VpnStatus.CONNECTED -> "Status: CONNECTED"
+            VpnStatus.DISCONNECTING -> "Status: DISCONNECTING..."
+            VpnStatus.ERROR -> "Status: ERROR"
+        }
+        val color = when (status) {
+            VpnStatus.CONNECTED -> android.graphics.Color.GREEN
+            VpnStatus.CONNECTING -> android.graphics.Color.YELLOW
+            VpnStatus.ERROR -> android.graphics.Color.RED
+            else -> android.graphics.Color.GRAY
+        }
+        tvStatus.setTextColor(color)
     }
 }
