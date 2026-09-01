@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -21,13 +20,14 @@ import kotlinx.coroutines.launch
 class AppMonitorService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val checkInterval = 1500L
+    private val checkInterval = 3000L
     private var appVpnStorage: AppVpnStorage? = null
-    private var lastForegroundApp: String? = null
+    private var lastSelectedPackages: Set<String> = emptySet()
+    private var lastExcludedPackages: Set<String> = emptySet()
 
     private val runnable = object : Runnable {
         override fun run() {
-            checkForegroundApp()
+            checkAppConfigChanges()
             handler.postDelayed(this, checkInterval)
         }
     }
@@ -35,6 +35,8 @@ class AppMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         appVpnStorage = AppVpnStorage(this)
+        lastSelectedPackages = appVpnStorage?.getSelectedPackages() ?: emptySet()
+        lastExcludedPackages = appVpnStorage?.getExcludedPackages() ?: emptySet()
         android.util.Log.d("AppMonitor", "Service created")
     }
 
@@ -53,7 +55,7 @@ class AppMonitorService : Service() {
         android.util.Log.d("AppMonitor", "Service destroyed")
     }
 
-    private fun checkForegroundApp() {
+    private fun checkAppConfigChanges() {
         val storage = appVpnStorage ?: return
         if (!storage.isEnabled()) {
             android.util.Log.d("AppMonitor", "App VPN disabled")
@@ -64,86 +66,37 @@ class AppMonitorService : Service() {
         val excludedPackages = storage.getExcludedPackages()
         android.util.Log.d("AppMonitor", "Selected: $selectedPackages, Excluded: $excludedPackages")
 
-        if (selectedPackages.isEmpty() && excludedPackages.isEmpty()) {
-            android.util.Log.d("AppMonitor", "No apps configured")
+        if (selectedPackages == lastSelectedPackages && excludedPackages == lastExcludedPackages) {
             return
         }
 
-        val currentApp = getForegroundApp()
-        if (currentApp == lastForegroundApp) return
-        lastForegroundApp = currentApp
+        lastSelectedPackages = selectedPackages
+        lastExcludedPackages = excludedPackages
 
-        android.util.Log.d("AppMonitor", "Foreground app: $currentApp, VPN status: ${VpnManager.globalStatus}")
+        android.util.Log.d("AppMonitor", "App config changed, reconnecting...")
 
-        val currentStatus = VpnManager.globalStatus
-
-        when {
-            currentApp != null && selectedPackages.contains(currentApp) && currentStatus == VpnStatus.DISCONNECTED -> {
-                android.util.Log.d("AppMonitor", "Whitelist app: $currentApp, connecting...")
-                connectVpn(currentApp)
-            }
-            currentApp != null && excludedPackages.contains(currentApp) && currentStatus == VpnStatus.CONNECTED -> {
-                android.util.Log.d("AppMonitor", "Blacklist app: $currentApp, disconnecting...")
-                disconnectVpn()
-            }
+        if (VpnManager.globalStatus == VpnStatus.CONNECTED) {
+            reconnectVpn()
         }
     }
 
-    private fun connectVpn(appName: String) {
-        val servers = ServerStorage(this).loadServers()
-        android.util.Log.d("AppMonitor", "Servers: ${servers.size}")
-        val validServer = servers.firstOrNull {
-            it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
-        }
-        android.util.Log.d("AppMonitor", "Valid server: ${validServer?.name}")
-        validServer?.let { server ->
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    android.util.Log.d("AppMonitor", "Getting VpnManager singleton...")
-                    val vpnManager = VpnManager.getInstance(this@AppMonitorService)
-                    android.util.Log.d("AppMonitor", "Calling connect()")
-                    vpnManager.connect(server)
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("AppMonitor", "Connect failed: ${e.message}", e)
-                }
-            }
-        }
-    }
+    private fun reconnectVpn() {
+        val vpnManager = VpnManager.getInstance(this)
+        val currentServer = vpnManager.getCurrentServer() ?: return
 
-    private fun disconnectVpn() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                android.util.Log.d("AppMonitor", "Getting VpnManager singleton...")
-                val vpnManager = VpnManager.getInstance(this@AppMonitorService)
-                android.util.Log.d("AppMonitor", "Calling disconnect()")
+                android.util.Log.d("AppMonitor", "Disconnecting for reconnect...")
                 vpnManager.disconnect()
+                kotlinx.coroutines.delay(500)
+                android.util.Log.d("AppMonitor", "Connecting with new app config...")
+                vpnManager.connect(currentServer)
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this@AppMonitorService, "VPN отключён", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AppMonitorService, "Конфиг split tunneling обновлён", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AppMonitor", "Disconnect failed: ${e.message}", e)
+                android.util.Log.e("AppMonitor", "Reconnect failed: ${e.message}", e)
             }
-        }
-    }
-
-    private fun getForegroundApp(): String? {
-        return try {
-            val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val time = System.currentTimeMillis()
-            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, time - 5000, time)
-            if (stats.isNullOrEmpty()) {
-                android.util.Log.d("AppMonitor", "No usage stats")
-                return null
-            }
-            val app = stats.maxByOrNull { it.lastTimeUsed }?.packageName
-            android.util.Log.d("AppMonitor", "UsageStats foreground: $app")
-            app
-        } catch (e: Exception) {
-            android.util.Log.e("AppMonitor", "Failed to get foreground app: ${e.message}")
-            null
         }
     }
 
@@ -160,7 +113,7 @@ class AppMonitorService : Service() {
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Config VPN")
-            .setContentText("Smart App VPN активен")
+            .setContentText("Smart App VPN активен — split tunneling")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
