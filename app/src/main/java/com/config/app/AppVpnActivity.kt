@@ -123,14 +123,14 @@ class AppVpnActivity : AppCompatActivity() {
                 android.util.Log.d("AppVpn", "Total packages: $total")
 
                 for (pkgInfo in packages) {
+                    val pkg = pkgInfo.packageName
                     try {
-                        val pkg = pkgInfo.packageName
                         if (pkg == packageName) continue
                         if (pkg in blacklist) continue
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
 
-                        // Проверяем, что у приложения есть launcher activity (значит это реальное приложение, не сервис)
+                        // Проверяем, что у приложения есть launcher activity
                         val launchIntent = pm.getLaunchIntentForPackage(pkg)
                         if (launchIntent == null) {
                             noLauncher++
@@ -158,15 +158,15 @@ class AppVpnActivity : AppCompatActivity() {
                 // Fallback: показываем все без фильтра getLaunchIntentForPackage
                 try {
                     val fallback = pm.getInstalledPackages(0)
-                    for (pkgInfo in fallback) {
+                    for (fbPkgInfo in fallback) {
+                        val fbPkg = fbPkgInfo.packageName
                         try {
-                            val pkg = pkgInfo.packageName
-                            if (pkg == packageName || pkg in blacklist) continue
-                            val appInfo = pkgInfo.applicationInfo ?: continue
+                            if (fbPkg == packageName || fbPkg in blacklist) continue
+                            val appInfo = fbPkgInfo.applicationInfo ?: continue
                             val label = pm.getApplicationLabel(appInfo).toString()
                             val icon = pm.getApplicationIcon(appInfo)
-                            val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
-                            appList.add(AppInfo(pkg, label, icon, isSelected))
+                            val isSelected = if (isVpnMode) selectedPackages.contains(fbPkg) else excludedPackages.contains(fbPkg)
+                            appList.add(AppInfo(fbPkg, label, icon, isSelected))
                         } catch (_: Exception) {}
                     }
                 } catch (_: Exception) {}
