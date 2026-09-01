@@ -101,9 +101,9 @@ class AppVpnActivity : AppCompatActivity() {
 
     private fun updateModeUI() {
         if (isVpnMode) {
-            tvMode.text = "Режим: ЧЕРЕЗ VPN (выбранные приложения включают VPN)"
+            tvMode.text = "Режим: ЧЕРЕЗ VPN (выбранные приложения идут через туннель)"
         } else {
-            tvMode.text = "Режим: БЕЗ VPN (выбранные приложения отключают VPN)"
+            tvMode.text = "Режим: БЕЗ VPN (выбранные приложения идут мимо туннеля)"
         }
     }
 
@@ -111,34 +111,38 @@ class AppVpnActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = try {
-                // Пробуем getInstalledApplications (надёжнее на Honor/Huawei)
-                val appsInfo = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                appsInfo
-                    .filter { it.packageName != packageName }
-                    .filter { it.packageName !in blacklist }
-                    .filter {
-                        // Только приложения с launcher activity
-                        val launchIntent = pm.getLaunchIntentForPackage(it.packageName)
-                        launchIntent != null
-                    }
+                // Надёжный способ: queryIntentActivities с MAIN/LAUNCHER
+                val mainIntent = Intent(Intent.ACTION_MAIN, null)
+                mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolveInfos = pm.queryIntentActivities(mainIntent, PackageManager.MATCH_ALL)
+
+                // Группируем по packageName (убираем дубликаты activity)
+                val seenPackages = mutableSetOf<String>()
+                resolveInfos
+                    .filter { it.activityInfo.packageName != packageName }
+                    .filter { it.activityInfo.packageName !in blacklist }
                     .sortedBy { it.loadLabel(pm).toString().lowercase() }
-                    .map { appInfo ->
-                        val pkg = appInfo.packageName
+                    .mapNotNull { resolveInfo ->
+                        val pkg = resolveInfo.activityInfo.packageName
+                        if (seenPackages.contains(pkg)) return@mapNotNull null
+                        seenPackages.add(pkg)
+
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
                         AppInfo(
                             packageName = pkg,
-                            appName = appInfo.loadLabel(pm).toString(),
-                            icon = appInfo.loadIcon(pm),
+                            appName = resolveInfo.loadLabel(pm).toString(),
+                            icon = resolveInfo.loadIcon(pm),
                             isSelected = isSelected
                         )
                     }
             } catch (e: Exception) {
-                android.util.Log.e("AppVpnActivity", "Failed to load apps: ${e.message}")
+                android.util.Log.e("AppVpnActivity", "Failed to load apps: ${e.message}", e)
                 emptyList()
             }
 
             apps.clear()
             apps.addAll(appList)
+            android.util.Log.d("AppVpnActivity", "Loaded ${apps.size} apps")
 
             withContext(Dispatchers.Main) {
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
