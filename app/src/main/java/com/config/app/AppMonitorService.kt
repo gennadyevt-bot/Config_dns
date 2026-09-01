@@ -43,6 +43,16 @@ class AppMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, createNotification())
         handler.post(runnable)
+
+        // Авто-подключение VPN при старте сервиса, если выключен
+        if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
+            val storage = appVpnStorage ?: AppVpnStorage(this)
+            val hasApps = storage.getSelectedPackages().isNotEmpty() || storage.getExcludedPackages().isNotEmpty()
+            if (hasApps) {
+                autoConnectVpn()
+            }
+        }
+
         android.util.Log.d("AppMonitor", "Service started")
         return START_STICKY
     }
@@ -77,6 +87,29 @@ class AppMonitorService : Service() {
 
         if (VpnManager.globalStatus == VpnStatus.CONNECTED) {
             reconnectVpn()
+        } else if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
+            autoConnectVpn()
+        }
+    }
+
+    private fun autoConnectVpn() {
+        val servers = ServerStorage(this).loadServers()
+        val validServer = servers.firstOrNull {
+            it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+        }
+        validServer?.let { server ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    android.util.Log.d("AppMonitor", "Auto-connecting to ${server.name}...")
+                    val vpnManager = VpnManager.getInstance(this@AppMonitorService)
+                    vpnManager.connect(server)
+                    Handler(Looper.getMainLooper()).post {
+                        Toast.makeText(this@AppMonitorService, "VPN автоматически включён", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("AppMonitor", "Auto-connect failed: ${e.message}", e)
+                }
+            }
         }
     }
 

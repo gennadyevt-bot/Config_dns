@@ -3,6 +3,7 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -79,14 +80,29 @@ class AppVpnActivity : AppCompatActivity() {
             appVpnStorage.setExcludedPackages(excludedPackages)
             val enabled = selectedPackages.isNotEmpty() || excludedPackages.isNotEmpty()
             appVpnStorage.setEnabled(enabled)
+
             if (enabled) {
                 AppMonitorService.start(this)
+                // Авто-подключение VPN если выключен
+                if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
+                    autoConnectVpn()
+                }
                 Toast.makeText(this, "VPN ON: " + selectedPackages.size + ", VPN OFF: " + excludedPackages.size, Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN disabled", Toast.LENGTH_SHORT).show()
             }
             finish()
+        }
+    }
+
+    private fun autoConnectVpn() {
+        val servers = ServerStorage(this).loadServers()
+        val validServer = servers.firstOrNull {
+            it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+        }
+        validServer?.let { server ->
+            VpnManager.getInstance(this).connect(server)
         }
     }
 
@@ -98,15 +114,10 @@ class AppVpnActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = mutableListOf<AppInfo>()
-            var total = 0
-            var success = 0
-            var errors = 0
 
             try {
-                // Пробуем getInstalledPackages — более низкоуровневый метод
-                val packages = pm.getInstalledPackages(0)
-                total = packages.size
-                android.util.Log.d("AppVpn", "Total packages: $total")
+                val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+                android.util.Log.d("AppVpn", "Total packages: ${packages.size}")
 
                 for (pkgInfo in packages) {
                     try {
@@ -115,6 +126,12 @@ class AppVpnActivity : AppCompatActivity() {
                         if (pkg in blacklist) continue
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
+
+                        // Фильтр: только пользовательские приложения (не чисто системные)
+                        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                        val isUpdatedSystem = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                        if (isSystem && !isUpdatedSystem) continue
+
                         val label = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appInfo)
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
@@ -125,24 +142,18 @@ class AppVpnActivity : AppCompatActivity() {
                             icon = icon,
                             isSelected = isSelected
                         ))
-                        success++
                     } catch (e: Exception) {
-                        errors++
                         android.util.Log.w("AppVpn", "Skip package: ${e.message}")
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AppVpn", "Fatal loadApps error: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AppVpnActivity, "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
-                }
             }
 
             appList.sortBy { it.appName.lowercase() }
             apps.clear()
             apps.addAll(appList)
-
-            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$success, err=$errors)")
+            android.util.Log.d("AppVpn", "Final user apps: ${apps.size}")
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
