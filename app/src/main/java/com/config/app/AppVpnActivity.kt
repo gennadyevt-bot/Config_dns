@@ -3,7 +3,6 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -41,14 +40,7 @@ class AppVpnActivity : AppCompatActivity() {
         "com.android.stk", "com.hihonor.android.clone", "com.hihonor.android.fmradio",
         "com.hihonor.photos", "com.hihonor.soundrecorder", "com.hihonor.systemmanager",
         "com.hihonor.gameassistant", "com.hihonor.magazine", "com.hihonor.detectrepair",
-        "com.hihonor.android.pushagent", "com.hihonor.appmarket", "com.google.android.gms",
-        "com.google.android.modulemetadata", "com.google.android.networkstack",
-        "com.google.android.tts", "com.google.android.apps.wellbeing",
-        "com.google.mainline.adservices", "com.google.mainline.telemetry",
-        "com.google.android.marvin.talkback", "com.google.android.googlequicksearchbox",
-        "com.android.settings", "com.android.dialer", "com.android.contacts",
-        "com.android.messaging", "com.android.calendar", "com.android.camera",
-        "com.android.calculator2", "com.android.documentsui", "com.android.packageinstaller"
+        "com.hihonor.android.pushagent", "com.hihonor.appmarket"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,8 +81,7 @@ class AppVpnActivity : AppCompatActivity() {
             appVpnStorage.setEnabled(enabled)
             if (enabled) {
                 AppMonitorService.start(this)
-                val msg = "VPN ON: " + selectedPackages.size + ", VPN OFF: " + excludedPackages.size
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "VPN ON: " + selectedPackages.size + ", VPN OFF: " + excludedPackages.size, Toast.LENGTH_SHORT).show()
             } else {
                 AppMonitorService.stop(this)
                 Toast.makeText(this, "App VPN disabled", Toast.LENGTH_SHORT).show()
@@ -100,54 +91,61 @@ class AppVpnActivity : AppCompatActivity() {
     }
 
     private fun updateModeUI() {
-        if (isVpnMode) {
-            tvMode.text = "Режим: ЧЕРЕЗ VPN (выбранные приложения идут через туннель)"
-        } else {
-            tvMode.text = "Режим: БЕЗ VPN (выбранные приложения идут мимо туннеля)"
-        }
+        tvMode.text = if (isVpnMode) "Режим: ЧЕРЕЗ VPN" else "Режим: БЕЗ VPN"
     }
 
     private fun loadApps() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
-            val appList = try {
-                // Способ 1: getInstalledApplications — самый надёжный
-                val appsInfo = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                android.util.Log.d("AppVpnActivity", "Total installed apps: ${appsInfo.size}")
+            val appList = mutableListOf<AppInfo>()
+            var total = 0
+            var success = 0
+            var errors = 0
 
-                val filtered = appsInfo
-                    .filter { it.packageName != packageName }
-                    .filter { it.packageName !in blacklist }
-                    .filter {
-                        // Показываем пользовательские + некоторые системные, но не чисто системные
-                        (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
-                        (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                    }
+            try {
+                // Пробуем getInstalledPackages — более низкоуровневый метод
+                val packages = pm.getInstalledPackages(0)
+                total = packages.size
+                android.util.Log.d("AppVpn", "Total packages: $total")
 
-                android.util.Log.d("AppVpnActivity", "After filter: ${filtered.size}")
+                for (pkgInfo in packages) {
+                    try {
+                        val pkg = pkgInfo.packageName
+                        if (pkg == packageName) continue
+                        if (pkg in blacklist) continue
 
-                filtered
-                    .sortedBy { it.loadLabel(pm).toString().lowercase() }
-                    .map { appInfo ->
-                        val pkg = appInfo.packageName
+                        val appInfo = pkgInfo.applicationInfo ?: continue
+                        val label = pm.getApplicationLabel(appInfo).toString()
+                        val icon = pm.getApplicationIcon(appInfo)
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
-                        AppInfo(
+
+                        appList.add(AppInfo(
                             packageName = pkg,
-                            appName = appInfo.loadLabel(pm).toString(),
-                            icon = appInfo.loadIcon(pm),
+                            appName = label,
+                            icon = icon,
                             isSelected = isSelected
-                        )
+                        ))
+                        success++
+                    } catch (e: Exception) {
+                        errors++
+                        android.util.Log.w("AppVpn", "Skip package: ${e.message}")
                     }
+                }
             } catch (e: Exception) {
-                android.util.Log.e("AppVpnActivity", "Failed to load apps: ${e.message}", e)
-                emptyList()
+                android.util.Log.e("AppVpn", "Fatal loadApps error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@AppVpnActivity, "Ошибка загрузки: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
 
+            appList.sortBy { it.appName.lowercase() }
             apps.clear()
             apps.addAll(appList)
-            android.util.Log.d("AppVpnActivity", "Final apps list size: ${apps.size}")
+
+            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$success, err=$errors)")
 
             withContext(Dispatchers.Main) {
+                Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
                     if (isVpnMode) {
                         if (isChecked) selectedPackages.add(app.packageName)
@@ -175,7 +173,7 @@ class AppVpnActivity : AppCompatActivity() {
     private fun showPermissionDialog() {
         AlertDialog.Builder(this)
             .setTitle("Permission Required")
-            .setMessage("App VPN needs Usage Access permission to detect when selected apps are opened. Please enable it in settings.")
+            .setMessage("App VPN needs Usage Access permission. Please enable it in settings.")
             .setPositiveButton("Open Settings") { _, _ -> startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
             .setNegativeButton("Cancel") { _, _ -> finish() }
             .setCancelable(false)
