@@ -1,25 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="#228B22">
 
     <TextView
         android:id="@+id/tvMode"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Режим: ЧЕРЕЗ VPN"
-        android:textSize="16sp"
+        android:textSize="20sp"
         android:textStyle="bold"
-        android:paddingBottom="8dp" />
+        android:textColor="#1a1a1a"
+        android:layout_marginBottom="12dp" />
 
     <RadioGroup
         android:id="@+id/radioGroup"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="12dp">
 
         <RadioButton
             android:id="@+id/rbVpnOn"
@@ -27,6 +30,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Через VPN"
+            android:textColor="#1a1a1a"
             android:checked="true" />
 
         <RadioButton
@@ -34,18 +38,32 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Без VPN" />
+            android:text="Без VPN"
+            android:textColor="#1a1a1a" />
     </RadioGroup>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:layout_marginBottom="12dp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvApps"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:visibility="visible" />
 
     <Button
         android:id="@+id/btnSave"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Сохранить" />
+        android:text="СОХРАНИТЬ"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#32CD32"
+        android:layout_marginTop="12dp" />
+
 </LinearLayout>

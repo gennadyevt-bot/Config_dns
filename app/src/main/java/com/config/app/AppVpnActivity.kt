@@ -8,7 +8,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
+import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -30,6 +32,7 @@ class AppVpnActivity : AppCompatActivity() {
     private lateinit var radioGroup: RadioGroup
     private lateinit var rbVpnOn: RadioButton
     private lateinit var rbVpnOff: RadioButton
+    private lateinit var progressBar: ProgressBar
     private lateinit var appVpnStorage: AppVpnStorage
     private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
@@ -57,6 +60,7 @@ class AppVpnActivity : AppCompatActivity() {
         radioGroup = findViewById(R.id.radioGroup)
         rbVpnOn = findViewById(R.id.rbVpnOn)
         rbVpnOff = findViewById(R.id.rbVpnOff)
+        progressBar = findViewById(R.id.progressBar)
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
@@ -109,6 +113,9 @@ class AppVpnActivity : AppCompatActivity() {
     }
 
     private fun loadApps() {
+        progressBar.visibility = View.VISIBLE
+        rvApps.visibility = View.GONE
+
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = mutableListOf<AppInfo>()
@@ -129,13 +136,13 @@ class AppVpnActivity : AppCompatActivity() {
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
                         val label = pm.getApplicationLabel(appInfo).toString()
-                        val icon = pm.getApplicationIcon(appInfo)
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
 
+                        // Иконку НЕ грузим здесь — лениво в адаптере
                         appList.add(AppInfo(
                             packageName = pkg,
                             appName = label,
-                            icon = icon,
+                            icon = null,
                             isSelected = isSelected
                         ))
                         ok++
@@ -154,8 +161,9 @@ class AppVpnActivity : AppCompatActivity() {
             android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$ok, err=$errors)")
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
-                rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
+                progressBar.visibility = View.GONE
+                rvApps.visibility = View.VISIBLE
+                rvApps.adapter = AppListAdapter(apps, packageManager) { app, isChecked ->
                     if (isVpnMode) {
                         if (isChecked) selectedPackages.add(app.packageName)
                         else selectedPackages.remove(app.packageName)
