@@ -3,7 +3,6 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -83,7 +82,6 @@ class AppVpnActivity : AppCompatActivity() {
 
             if (enabled) {
                 AppMonitorService.start(this)
-                // Авто-подключение VPN если выключен
                 if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
                     autoConnectVpn()
                 }
@@ -114,10 +112,15 @@ class AppVpnActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val appList = mutableListOf<AppInfo>()
+            var total = 0
+            var hasLauncher = 0
+            var noLauncher = 0
+            var errors = 0
 
             try {
                 val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
-                android.util.Log.d("AppVpn", "Total packages: ${packages.size}")
+                total = packages.size
+                android.util.Log.d("AppVpn", "Total packages: $total")
 
                 for (pkgInfo in packages) {
                     try {
@@ -127,10 +130,13 @@ class AppVpnActivity : AppCompatActivity() {
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
 
-                        // Фильтр: только пользовательские приложения (не чисто системные)
-                        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                        val isUpdatedSystem = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                        if (isSystem && !isUpdatedSystem) continue
+                        // Проверяем, что у приложения есть launcher activity (значит это реальное приложение, не сервис)
+                        val launchIntent = pm.getLaunchIntentForPackage(pkg)
+                        if (launchIntent == null) {
+                            noLauncher++
+                            continue
+                        }
+                        hasLauncher++
 
                         val label = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appInfo)
@@ -143,17 +149,33 @@ class AppVpnActivity : AppCompatActivity() {
                             isSelected = isSelected
                         ))
                     } catch (e: Exception) {
-                        android.util.Log.w("AppVpn", "Skip package: ${e.message}")
+                        errors++
+                        android.util.Log.w("AppVpn", "Skip package $pkg: ${e.message}")
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AppVpn", "Fatal loadApps error: ${e.message}", e)
+                // Fallback: показываем все без фильтра getLaunchIntentForPackage
+                try {
+                    val fallback = pm.getInstalledPackages(0)
+                    for (pkgInfo in fallback) {
+                        try {
+                            val pkg = pkgInfo.packageName
+                            if (pkg == packageName || pkg in blacklist) continue
+                            val appInfo = pkgInfo.applicationInfo ?: continue
+                            val label = pm.getApplicationLabel(appInfo).toString()
+                            val icon = pm.getApplicationIcon(appInfo)
+                            val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
+                            appList.add(AppInfo(pkg, label, icon, isSelected))
+                        } catch (_: Exception) {}
+                    }
+                } catch (_: Exception) {}
             }
 
             appList.sortBy { it.appName.lowercase() }
             apps.clear()
             apps.addAll(appList)
-            android.util.Log.d("AppVpn", "Final user apps: ${apps.size}")
+            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, launcher=$hasLauncher, noLauncher=$noLauncher, err=$errors)")
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
