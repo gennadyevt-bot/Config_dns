@@ -22,7 +22,6 @@ class AppMonitorService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val checkInterval = 1500L
-    private var vpnManager: VpnManager? = null
     private var appVpnStorage: AppVpnStorage? = null
     private var lastForegroundApp: String? = null
 
@@ -35,7 +34,6 @@ class AppMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        vpnManager = VpnManager(this)
         appVpnStorage = AppVpnStorage(this)
         android.util.Log.d("AppMonitor", "Service created")
     }
@@ -101,8 +99,10 @@ class AppMonitorService : Service() {
         validServer?.let { server ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    android.util.Log.d("AppMonitor", "Calling vpnManager.connect()")
-                    vpnManager?.connect(server)
+                    android.util.Log.d("AppMonitor", "Getting VpnManager singleton...")
+                    val vpnManager = VpnManager.getInstance(this@AppMonitorService)
+                    android.util.Log.d("AppMonitor", "Calling connect()")
+                    vpnManager.connect(server)
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(this@AppMonitorService, "VPN включён", Toast.LENGTH_SHORT).show()
                     }
@@ -116,8 +116,10 @@ class AppMonitorService : Service() {
     private fun disconnectVpn() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                android.util.Log.d("AppMonitor", "Calling vpnManager.disconnect()")
-                vpnManager?.disconnect()
+                android.util.Log.d("AppMonitor", "Getting VpnManager singleton...")
+                val vpnManager = VpnManager.getInstance(this@AppMonitorService)
+                android.util.Log.d("AppMonitor", "Calling disconnect()")
+                vpnManager.disconnect()
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(this@AppMonitorService, "VPN отключён", Toast.LENGTH_SHORT).show()
                 }

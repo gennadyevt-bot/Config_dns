@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        vpnManager = VpnManager(this)
+        vpnManager = VpnManager.getInstance(this)
         serverStorage = ServerStorage(this)
 
         tvStatus = findViewById(R.id.tvStatus)

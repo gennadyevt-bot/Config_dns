@@ -15,10 +15,9 @@ import org.amnezia.awg.backend.Tunnel
 import org.amnezia.awg.config.Config
 import java.io.ByteArrayInputStream
 
-class VpnManager(private val context: Context) {
+class VpnManager private constructor(private val context: Context) {
 
-    private val backend: Backend = GoBackend(context, NoopTunnelActionHandler())
-    private var tunnel: WgTunnel? = null
+    private val backend: Backend = GoBackend(context.applicationContext, NoopTunnelActionHandler())
     private var currentConfig: Config? = null
 
     var onStatusChanged: ((VpnStatus) -> Unit)? = null
@@ -29,6 +28,19 @@ class VpnManager(private val context: Context) {
 
     companion object {
         var globalStatus: VpnStatus = VpnStatus.DISCONNECTED
+
+        @Volatile
+        private var instance: VpnManager? = null
+
+        fun getInstance(context: Context): VpnManager {
+            return instance ?: synchronized(this) {
+                instance ?: VpnManager(context).also { instance = it }
+            }
+        }
+
+        fun destroyInstance() {
+            instance = null
+        }
     }
 
     fun getPrepareIntent(activity: Activity): android.content.Intent? {
@@ -45,13 +57,15 @@ class VpnManager(private val context: Context) {
                 }
 
                 val configString = buildConfigString(server)
-                android.util.Log.d("ConfigVPN", "Config string:\n$configString")
+                android.util.Log.d("ConfigVPN", "Config string:
+$configString")
 
                 val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
                 currentConfig = config
 
-                tunnel = WgTunnel("config_${server.id}")
-                backend.setState(tunnel!!, Tunnel.State.UP, config)
+                // Один tunnel на всё приложение
+                val tunnel = WgTunnel.getInstance()
+                backend.setState(tunnel, Tunnel.State.UP, config)
 
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.CONNECTED)
@@ -75,7 +89,8 @@ class VpnManager(private val context: Context) {
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.DISCONNECTING)
                 }
-                tunnel?.let { backend.setState(it, Tunnel.State.DOWN, currentConfig) }
+                val tunnel = WgTunnel.getInstance()
+                backend.setState(tunnel, Tunnel.State.DOWN, currentConfig)
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.DISCONNECTED)
                     currentServer = null
