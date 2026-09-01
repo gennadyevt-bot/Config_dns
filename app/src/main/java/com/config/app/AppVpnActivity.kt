@@ -141,14 +141,10 @@ class AppVpnActivity : AppCompatActivity() {
                     )
                 }
 
-            // Проверяем, не отменена ли корутина
-            if (!isActive) return@launch
-
             apps.clear()
             apps.addAll(appList)
 
             withContext(Dispatchers.Main) {
-                if (!isActive) return@withContext
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
                     if (isVpnMode) {
                         if (isChecked) selectedPackages.add(app.packageName)
