@@ -8,19 +8,20 @@ class AppVpnStorage(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun setSelectedPackages(packages: Set<String>) {
-        prefs.edit().putStringSet(SELECTED_KEY, packages).apply()
+        // HashSet() — обязательно, иначе putStringSet не видит изменения того же Set
+        prefs.edit().putStringSet(SELECTED_KEY, HashSet(packages)).apply()
     }
 
     fun getSelectedPackages(): Set<String> {
-        return prefs.getStringSet(SELECTED_KEY, emptySet()) ?: emptySet()
+        return HashSet(prefs.getStringSet(SELECTED_KEY, emptySet()) ?: emptySet())
     }
 
     fun setExcludedPackages(packages: Set<String>) {
-        prefs.edit().putStringSet(EXCLUDED_KEY, packages).apply()
+        prefs.edit().putStringSet(EXCLUDED_KEY, HashSet(packages)).apply()
     }
 
     fun getExcludedPackages(): Set<String> {
-        return prefs.getStringSet(EXCLUDED_KEY, emptySet()) ?: emptySet()
+        return HashSet(prefs.getStringSet(EXCLUDED_KEY, emptySet()) ?: emptySet())
     }
 
     fun setEnabled(enabled: Boolean) {
