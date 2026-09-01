@@ -21,5 +21,7 @@ data class ServerInfo(
     val h1: String = "1",
     val h2: String = "2",
     val h3: String = "3",
-    val h4: String = "4"
+    val h4: String = "4",
+    val includedApps: List<String> = emptyList(),
+    val excludedApps: List<String> = emptyList()
 )

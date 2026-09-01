@@ -8,16 +8,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.amnezia.awg.backend.Backend
-import org.amnezia.awg.backend.GoBackend
-import org.amnezia.awg.backend.NoopTunnelActionHandler
-import org.amnezia.awg.backend.Tunnel
-import org.amnezia.awg.config.Config
+import com.wireguard.android.backend.Backend
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.config.Config
 import java.io.ByteArrayInputStream
 
 class VpnManager private constructor(private val context: Context) {
 
-    private val backend: Backend = GoBackend(context.applicationContext, NoopTunnelActionHandler())
+    private val backend: Backend = GoBackend(context.applicationContext)
     private var currentConfig: Config? = null
 
     var onStatusChanged: ((VpnStatus) -> Unit)? = null
@@ -56,7 +55,11 @@ class VpnManager private constructor(private val context: Context) {
                     updateStatus(VpnStatus.CONNECTING)
                 }
 
-                val configString = buildConfigString(server)
+                val appVpnStorage = AppVpnStorage(context)
+                val includedApps = appVpnStorage.getSelectedPackages().toList()
+                val excludedApps = appVpnStorage.getExcludedPackages().toList()
+
+                val configString = buildConfigString(server, includedApps, excludedApps)
                 android.util.Log.d("ConfigVPN", "Config string: $configString")
 
                 val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
@@ -110,7 +113,11 @@ class VpnManager private constructor(private val context: Context) {
     fun getStatus(): VpnStatus = globalStatus
     fun getCurrentServer(): ServerInfo? = currentServer
 
-    private fun buildConfigString(server: ServerInfo): String {
+    private fun buildConfigString(
+        server: ServerInfo,
+        includedApps: List<String> = emptyList(),
+        excludedApps: List<String> = emptyList()
+    ): String {
         return buildString {
             appendLine("[Interface]")
             appendLine("Address = ${server.interfaceAddress}")
@@ -126,6 +133,9 @@ class VpnManager private constructor(private val context: Context) {
             if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
             if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
             if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
+
+            includedApps.forEach { appendLine("IncludedApplications = $it") }
+            excludedApps.forEach { appendLine("ExcludedApplications = $it") }
 
             appendLine("[Peer]")
             appendLine("PublicKey = ${server.peerPublicKey}")
