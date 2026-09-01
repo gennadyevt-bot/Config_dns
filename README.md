@@ -164,3 +164,5 @@ GitHub Actions (`.github/workflows/android.yml`):
 ## 👤 Автор
 
 Создан на основе проекта **STOP VPN** (WireGuard/AmneziaWG, Kotlin, Android).
+
+<!-- CI trigger: 1788243202 -->
