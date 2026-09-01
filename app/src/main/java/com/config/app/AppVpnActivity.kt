@@ -3,6 +3,7 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -113,8 +114,8 @@ class AppVpnActivity : AppCompatActivity() {
             val pm = packageManager
             val appList = mutableListOf<AppInfo>()
             var total = 0
-            var hasLauncher = 0
-            var noLauncher = 0
+            var ok = 0
+            var noIcon = 0
             var errors = 0
 
             try {
@@ -130,13 +131,12 @@ class AppVpnActivity : AppCompatActivity() {
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
 
-                        // Проверяем, что у приложения есть launcher activity
-                        val launchIntent = pm.getLaunchIntentForPackage(pkg)
-                        if (launchIntent == null) {
-                            noLauncher++
+                        // Фильтр: у реальных приложений есть иконка (icon != 0)
+                        // Системные сервисы часто имеют icon = 0
+                        if (appInfo.icon == 0) {
+                            noIcon++
                             continue
                         }
-                        hasLauncher++
 
                         val label = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appInfo)
@@ -148,6 +148,7 @@ class AppVpnActivity : AppCompatActivity() {
                             icon = icon,
                             isSelected = isSelected
                         ))
+                        ok++
                     } catch (e: Exception) {
                         errors++
                         android.util.Log.w("AppVpn", "Skip package $pkg: ${e.message}")
@@ -155,27 +156,12 @@ class AppVpnActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AppVpn", "Fatal loadApps error: ${e.message}", e)
-                // Fallback: показываем все без фильтра getLaunchIntentForPackage
-                try {
-                    val fallback = pm.getInstalledPackages(0)
-                    for (fbPkgInfo in fallback) {
-                        val fbPkg = fbPkgInfo.packageName
-                        try {
-                            if (fbPkg == packageName || fbPkg in blacklist) continue
-                            val appInfo = fbPkgInfo.applicationInfo ?: continue
-                            val label = pm.getApplicationLabel(appInfo).toString()
-                            val icon = pm.getApplicationIcon(appInfo)
-                            val isSelected = if (isVpnMode) selectedPackages.contains(fbPkg) else excludedPackages.contains(fbPkg)
-                            appList.add(AppInfo(fbPkg, label, icon, isSelected))
-                        } catch (_: Exception) {}
-                    }
-                } catch (_: Exception) {}
             }
 
             appList.sortBy { it.appName.lowercase() }
             apps.clear()
             apps.addAll(appList)
-            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, launcher=$hasLauncher, noLauncher=$noLauncher, err=$errors)")
+            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$ok, noIcon=$noIcon, err=$errors)")
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
