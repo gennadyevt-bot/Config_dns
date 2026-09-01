@@ -114,7 +114,7 @@ class AppVpnActivity : AppCompatActivity() {
             val appList = mutableListOf<AppInfo>()
 
             try {
-                val packages = pm.getInstalledPackages(0)
+                val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
                 android.util.Log.d("AppVpn", "Total packages: ${packages.size}")
 
                 for (pkgInfo in packages) {
