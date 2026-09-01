@@ -57,8 +57,7 @@ class VpnManager private constructor(private val context: Context) {
                 }
 
                 val configString = buildConfigString(server)
-                android.util.Log.d("ConfigVPN", "Config string:
-$configString")
+                android.util.Log.d("ConfigVPN", "Config string: $configString")
 
                 val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
                 currentConfig = config

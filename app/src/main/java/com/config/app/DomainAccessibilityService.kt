@@ -23,7 +23,7 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        vpnManager = VpnManager(this)
+        vpnManager = VpnManager.getInstance(this)
         domainStorage = DomainVpnStorage(this)
         android.util.Log.d("DomainVPN", "Accessibility Service connected")
     }
