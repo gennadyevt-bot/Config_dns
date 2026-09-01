@@ -14,12 +14,28 @@
         android:textStyle="bold"
         android:paddingBottom="8dp" />
 
-    <ToggleButton
-        android:id="@+id/toggleMode"
+    <RadioGroup
+        android:id="@+id/radioGroup"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textOn="Без VPN"
-        android:textOff="Через VPN" />
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <RadioButton
+            android:id="@+id/rbVpnOn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Через VPN"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/rbVpnOff"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Без VPN" />
+    </RadioGroup>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvApps"

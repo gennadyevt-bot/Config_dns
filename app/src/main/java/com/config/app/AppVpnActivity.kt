@@ -10,15 +10,17 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.widget.Button
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ToggleButton
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,12 +29,15 @@ class AppVpnActivity : AppCompatActivity() {
     private lateinit var rvApps: RecyclerView
     private lateinit var btnSave: Button
     private lateinit var tvMode: TextView
-    private lateinit var toggleMode: ToggleButton
+    private lateinit var radioGroup: RadioGroup
+    private lateinit var rbVpnOn: RadioButton
+    private lateinit var rbVpnOff: RadioButton
     private lateinit var appVpnStorage: AppVpnStorage
     private val apps = mutableListOf<AppInfo>()
     private val selectedPackages = mutableSetOf<String>()
     private val excludedPackages = mutableSetOf<String>()
-    private var isVpnMode = true // true = VPN ON (whitelist), false = VPN OFF (blacklist)
+    private var isVpnMode = true
+    private var loadJob: Job? = null
 
     private val blacklist = setOf(
         "com.android.stk", "com.hihonor.android.clone", "com.hihonor.android.fmradio",
@@ -59,19 +64,25 @@ class AppVpnActivity : AppCompatActivity() {
         rvApps = findViewById(R.id.rvApps)
         btnSave = findViewById(R.id.btnSave)
         tvMode = findViewById(R.id.tvMode)
-        toggleMode = findViewById(R.id.toggleMode)
+        radioGroup = findViewById(R.id.radioGroup)
+        rbVpnOn = findViewById(R.id.rbVpnOn)
+        rbVpnOff = findViewById(R.id.rbVpnOff)
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
         if (!hasUsageStatsPermission()) {
             showPermissionDialog()
+            return
         }
 
-        toggleMode.setOnCheckedChangeListener { _, isChecked ->
-            isVpnMode = !isChecked
+        radioGroup.setOnCheckedChangeListener { _, checkedId ->
+            isVpnMode = (checkedId == R.id.rbVpnOn)
             updateModeUI()
             loadApps()
         }
+
+        // Устанавливаем начальное состояние
+        rbVpnOn.isChecked = true
         updateModeUI()
         loadApps()
 
@@ -95,15 +106,15 @@ class AppVpnActivity : AppCompatActivity() {
     private fun updateModeUI() {
         if (isVpnMode) {
             tvMode.text = "Режим: ЧЕРЕЗ VPN (выбранные приложения включают VPN)"
-            toggleMode.textOn = "Через VPN"
         } else {
             tvMode.text = "Режим: БЕЗ VPN (выбранные приложения отключают VPN)"
-            toggleMode.textOff = "Без VPN"
         }
     }
 
     private fun loadApps() {
-        CoroutineScope(Dispatchers.IO).launch {
+        // Отменяем предыдущую загрузку
+        loadJob?.cancel()
+        loadJob = CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
             val launcherIntent = Intent(Intent.ACTION_MAIN, null)
             launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
@@ -130,10 +141,14 @@ class AppVpnActivity : AppCompatActivity() {
                     )
                 }
 
+            // Проверяем, не отменена ли корутина
+            if (!isActive) return@launch
+
             apps.clear()
             apps.addAll(appList)
 
             withContext(Dispatchers.Main) {
+                if (!isActive) return@withContext
                 rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
                     if (isVpnMode) {
                         if (isChecked) selectedPackages.add(app.packageName)
@@ -145,6 +160,11 @@ class AppVpnActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        loadJob?.cancel()
     }
 
     private fun hasUsageStatsPermission(): Boolean {
