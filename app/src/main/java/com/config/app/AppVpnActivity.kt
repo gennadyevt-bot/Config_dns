@@ -3,7 +3,6 @@ package com.config.app
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -115,7 +114,6 @@ class AppVpnActivity : AppCompatActivity() {
             val appList = mutableListOf<AppInfo>()
             var total = 0
             var ok = 0
-            var noIcon = 0
             var errors = 0
 
             try {
@@ -130,14 +128,6 @@ class AppVpnActivity : AppCompatActivity() {
                         if (pkg in blacklist) continue
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
-
-                        // Фильтр: у реальных приложений есть иконка (icon != 0)
-                        // Системные сервисы часто имеют icon = 0
-                        if (appInfo.icon == 0) {
-                            noIcon++
-                            continue
-                        }
-
                         val label = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appInfo)
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
@@ -161,7 +151,7 @@ class AppVpnActivity : AppCompatActivity() {
             appList.sortBy { it.appName.lowercase() }
             apps.clear()
             apps.addAll(appList)
-            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$ok, noIcon=$noIcon, err=$errors)")
+            android.util.Log.d("AppVpn", "Loaded: ${apps.size} (total=$total, ok=$ok, err=$errors)")
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@AppVpnActivity, "Приложений: ${apps.size}", Toast.LENGTH_SHORT).show()
