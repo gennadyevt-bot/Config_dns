@@ -136,13 +136,13 @@ class AppVpnActivity : AppCompatActivity() {
 
                         val appInfo = pkgInfo.applicationInfo ?: continue
                         val label = pm.getApplicationLabel(appInfo).toString()
+                        val icon = pm.getApplicationIcon(appInfo)
                         val isSelected = if (isVpnMode) selectedPackages.contains(pkg) else excludedPackages.contains(pkg)
 
-                        // Иконку НЕ грузим здесь — лениво в адаптере
                         appList.add(AppInfo(
                             packageName = pkg,
                             appName = label,
-                            icon = null,
+                            icon = icon,
                             isSelected = isSelected
                         ))
                         ok++
@@ -163,7 +163,7 @@ class AppVpnActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 progressBar.visibility = View.GONE
                 rvApps.visibility = View.VISIBLE
-                rvApps.adapter = AppListAdapter(apps, packageManager) { app, isChecked ->
+                rvApps.adapter = AppListAdapter(apps) { app, isChecked ->
                     if (isVpnMode) {
                         if (isChecked) selectedPackages.add(app.packageName)
                         else selectedPackages.remove(app.packageName)
