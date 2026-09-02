@@ -48,20 +48,32 @@ class VpnManager private constructor(private val context: Context) {
         return VpnService.prepare(activity)
     }
 
+    fun isPrepared(): Boolean {
+        return VpnService.prepare(context) == null
+    }
+
     fun connect(server: ServerInfo) {
         scope.launch {
             try {
+                // Проверяем prepare ПЕРЕД подключением
+                val prepareIntent = VpnService.prepare(context)
+                if (prepareIntent != null) {
+                    withContext(Dispatchers.Main) {
+                        updateStatus(VpnStatus.ERROR)
+                        showToast("Ошибка: разрешение VPN не дано. Откройте приложение и нажмите CONNECT.")
+                    }
+                    return@launch
+                }
+
                 currentServer = server
                 withContext(Dispatchers.Main) {
                     onServerChanged?.invoke(server)
                     updateStatus(VpnStatus.CONNECTING)
                 }
 
-                // Сохраняем состояние — VPN включается
                 vpnStateStorage.setWasConnected(true)
                 vpnStateStorage.setLastServer(server.id)
 
-                // Стартуем keep-alive сервис
                 val serviceIntent = Intent(context, VpnKeepAliveService::class.java)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent)
@@ -117,10 +129,7 @@ class VpnManager private constructor(private val context: Context) {
                     updateStatus(VpnStatus.DISCONNECTING)
                 }
 
-                // Сохраняем состояние — VPN выключен
                 vpnStateStorage.setWasConnected(false)
-
-                // Останавливаем keep-alive сервис
                 context.stopService(Intent(context, VpnKeepAliveService::class.java))
 
                 val tunnel = WgTunnel.getInstance()

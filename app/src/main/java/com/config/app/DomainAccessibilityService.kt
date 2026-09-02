@@ -3,15 +3,18 @@ package com.config.app
 import android.accessibilityservice.AccessibilityService
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.os.Handler
-import android.os.Looper
 
 class DomainAccessibilityService : AccessibilityService() {
 
@@ -23,10 +26,12 @@ class DomainAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "DomainVPN"
-        private const val COOLDOWN_MS = 1500L
-        private const val TOAST_COOLDOWN_MS = 500L
-        private const val MAX_NODES = 300
-        private const val MAX_DEPTH = 6
+        private const val COOLDOWN_MS = 2000L
+        private const val TOAST_COOLDOWN_MS = 1000L
+        private const val MAX_NODES = 500
+        private const val MAX_DEPTH = 8
+        private const val NOTIFICATION_ID_PREPARE = 3001
+
         private val URL_REGEX = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
         private val DOMAIN_REGEX = Regex("""(?:https?://)?(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[-a-zA-Z0-9]+)*)""")
         private val TELEGRAM_PACKAGES = setOf(
@@ -40,7 +45,12 @@ class DomainAccessibilityService : AccessibilityService() {
             "com.instagram.android",
             "com.zhiliaoapp.musically",
             "com.twitter.android",
-            "com.discord"
+            "com.discord",
+            "com.android.chrome",
+            "org.mozilla.firefox",
+            "com.opera.browser",
+            "com.yandex.browser",
+            "com.microsoft.emmx"
         )
     }
 
@@ -54,72 +64,51 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val storage = domainStorage ?: return
-        if (!storage.isEnabled()) {
-            // showToastDebug("Domain VPN: выключен")
-            return
-        }
+        if (!storage.isEnabled()) return
         val domains = storage.getDomains()
-        if (domains.isEmpty()) {
-            // showToastDebug("Domain VPN: нет доменов")
-            return
-        }
+        if (domains.isEmpty()) return
 
         val pkg = event.packageName?.toString() ?: ""
         val eventType = event.eventType
-        val eventTypeName = when (eventType) {
-            AccessibilityEvent.TYPE_VIEW_CLICKED -> "CLICK"
-            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> "LONG_CLICK"
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
-            AccessibilityEvent.TYPE_VIEW_FOCUSED -> "FOCUSED"
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "TEXT_CHANGED"
-            else -> "OTHER($eventType)"
-        }
 
-        android.util.Log.d(TAG, "Event: $eventTypeName pkg=$pkg")
-
-        // Для отладки: показываем все события из мессенджеров
-        if (TELEGRAM_PACKAGES.any { pkg.contains(it) }) {
-            showToastDebug("$eventTypeName: $pkg")
-        }
+        android.util.Log.d(TAG, "Event: type=$eventType pkg=$pkg")
 
         val now = System.currentTimeMillis()
         if (now - lastTriggered < COOLDOWN_MS) return
 
         var url = ""
 
-        // 1. Проверяем event.source — кликнутый узел
-        val source = event.source
-        if (source != null) {
-            url = extractUrlFromNode(source)
-            if (url.isNotEmpty()) {
-                android.util.Log.d(TAG, "URL from source: $url")
-                showToastDebug("URL: $url")
-            }
-            source.recycle()
-        }
-
-        // 2. Проверяем текст события
-        if (url.isEmpty()) {
-            val eventText = event.text?.joinToString(" ") ?: ""
+        // 1. Проверяем текст события (клик, фокус, изменение текста)
+        val eventText = event.text?.joinToString(" ") ?: ""
+        if (eventText.isNotEmpty()) {
             url = extractUrl(eventText)
             if (url.isNotEmpty()) {
                 android.util.Log.d(TAG, "URL from event text: $url")
-                showToastDebug("URL text: $url")
             }
         }
 
-        // 3. Проверяем contentDescription события
+        // 2. Проверяем contentDescription
         if (url.isEmpty()) {
             val contentDesc = event.contentDescription?.toString() ?: ""
             url = extractUrl(contentDesc)
             if (url.isNotEmpty()) {
                 android.util.Log.d(TAG, "URL from contentDesc: $url")
-                showToastDebug("URL desc: $url")
             }
         }
 
-        // 4. Если это мессенджер — сканируем всё окно глубоко
+        // 3. Проверяем source node (кликнутый элемент)
+        if (url.isEmpty()) {
+            val source = event.source
+            if (source != null) {
+                url = extractUrlFromNode(source)
+                if (url.isNotEmpty()) {
+                    android.util.Log.d(TAG, "URL from source: $url")
+                }
+                source.recycle()
+            }
+        }
+
+        // 4. Для мессенджеров и браузеров — глубокое сканирование окна
         if (url.isEmpty() && TELEGRAM_PACKAGES.any { pkg.contains(it) }) {
             val root = rootInActiveWindow
             if (root != null) {
@@ -127,12 +116,11 @@ class DomainAccessibilityService : AccessibilityService() {
                 root.recycle()
                 if (url.isNotEmpty()) {
                     android.util.Log.d(TAG, "URL from deep scan: $url")
-                    showToastDebug("URL scan: $url")
                 }
             }
         }
 
-        // 5. Проверяем packageName против доменов
+        // 5. Проверяем packageName против доменов (если приложение само по себе — сайт)
         if (url.isEmpty()) {
             val matchedByPkg = domains.firstOrNull { domain ->
                 val domainBase = domain.removePrefix("www.").split(".")[0]
@@ -142,9 +130,7 @@ class DomainAccessibilityService : AccessibilityService() {
                 lastTriggered = now
                 android.util.Log.d(TAG, "MATCHED by package: $matchedByPkg")
                 showToast("VPN: $matchedByPkg (по приложению)")
-                if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
-                    autoConnectVpn(matchedByPkg)
-                }
+                triggerVpnConnect(matchedByPkg)
                 return
             }
         }
@@ -163,15 +149,29 @@ class DomainAccessibilityService : AccessibilityService() {
             lastTriggered = now
             android.util.Log.d(TAG, "MATCHED: $matchedDomain")
             showToast("VPN: $matchedDomain")
-            if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
-                autoConnectVpn(matchedDomain)
-            }
+            triggerVpnConnect(matchedDomain)
         } else {
-            showToastDebug("Не совпало: ${extractHost(url)}")
+            android.util.Log.d(TAG, "No match for: ${extractHost(url)}")
         }
     }
 
     override fun onInterrupt() {}
+
+    private fun triggerVpnConnect(domain: String) {
+        // Проверяем, дано ли разрешение VPN
+        if (VpnService.prepare(this) != null) {
+            android.util.Log.w(TAG, "VPN not prepared, showing notification")
+            showPrepareNotification(domain)
+            return
+        }
+
+        if (VpnManager.globalStatus == VpnStatus.DISCONNECTED ||
+            VpnManager.globalStatus == VpnStatus.ERROR) {
+            autoConnectVpn(domain)
+        } else {
+            android.util.Log.d(TAG, "VPN already active")
+        }
+    }
 
     private fun autoConnectVpn(domain: String) {
         android.util.Log.d(TAG, "Auto-connecting for: $domain")
@@ -188,11 +188,39 @@ class DomainAccessibilityService : AccessibilityService() {
                     vpnManager?.connect(server)
                     android.util.Log.d(TAG, "Connected to ${server.name}")
                     showConnectedNotification(domain)
+                } ?: run {
+                    showToast("Нет валидных серверов")
                 }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Auto-connect failed", e)
+                showToast("Ошибка подключения: ${e.message}")
             }
         }
+    }
+
+    private fun showPrepareNotification(domain: String) {
+        val channelId = "domain_vpn_prepare"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Domain VPN", NotificationManager.IMPORTANCE_HIGH)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("auto_connect_domain", domain)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Разрешите VPN для $domain")
+            .setContentText("Нажмите, чтобы открыть приложение и дать разрешение")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID_PREPARE, notification)
     }
 
     private fun showConnectedNotification(domain: String) {
@@ -259,12 +287,11 @@ class DomainAccessibilityService : AccessibilityService() {
 
             val text = node.text?.toString() ?: ""
             val desc = node.contentDescription?.toString() ?: ""
-            val hint = node.hintText?.toString() ?: ""
-            val viewId = node.viewIdResourceName ?: ""
+            val hint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) node.hintText?.toString() ?: "" else ""
 
-            for (candidate in listOf(text, desc, hint, viewId)) {
-                if (candidate.isNotEmpty()) {
-                    val extracted = extractUrl(candidate)
+            for (src in listOf(text, desc, hint)) {
+                if (src.isNotEmpty()) {
+                    val extracted = extractUrl(src)
                     if (extracted.isNotEmpty()) return extracted
                 }
             }
@@ -277,18 +304,12 @@ class DomainAccessibilityService : AccessibilityService() {
         return ""
     }
 
-    private fun showToast(message: String) {
-        toastHandler.post {
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun showToastDebug(message: String) {
+    private fun showToast(msg: String) {
         val now = System.currentTimeMillis()
         if (now - lastToastTime < TOAST_COOLDOWN_MS) return
         lastToastTime = now
         toastHandler.post {
-            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 }
