@@ -79,10 +79,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val imagePickerLauncher = registerForActivityResult(
+    private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { decodeQrFromImage(it) }
+        uri?.let { handleFileImport(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -274,8 +274,40 @@ class MainActivity : AppCompatActivity() {
         qrScannerLauncher.launch(options)
     }
 
-    private fun pickImageForQr() {
-        imagePickerLauncher.launch("image/*")
+    private fun pickFile() {
+        filePickerLauncher.launch("*/*")
+    }
+
+    private fun handleFileImport(uri: Uri) {
+        val mime = contentResolver.getType(uri)
+        if (mime?.startsWith("image/") == true) {
+            decodeQrFromImage(uri)
+        } else {
+            importConfigFromTextFile(uri)
+        }
+    }
+
+    private fun importConfigFromTextFile(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val text = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+            inputStream?.close()
+
+            if (text.isEmpty()) {
+                Toast.makeText(this, "Файл пуст", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val config = WgConfigParser.parse(text)
+            if (config != null) {
+                fillDialogFields(config)
+                Toast.makeText(this, "Конфиг импортирован: ${config.name}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Неверный формат конфига", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Ошибка импорта: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun decodeQrFromImage(uri: Uri) {
@@ -338,7 +370,7 @@ class MainActivity : AppCompatActivity() {
         val btnPickImage = view.findViewById<Button>(R.id.btnPickImage)
 
         btnScanQr.setOnClickListener { startQrScan() }
-        btnPickImage.setOnClickListener { pickImageForQr() }
+        btnPickImage.setOnClickListener { pickFile() }
 
         AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setView(view)
@@ -436,7 +468,7 @@ class MainActivity : AppCompatActivity() {
         etH4.setText(server.h4)
 
         btnScanQr.setOnClickListener { startQrScan() }
-        btnPickImage.setOnClickListener { pickImageForQr() }
+        btnPickImage.setOnClickListener { pickFile() }
 
         AlertDialog.Builder(this, R.style.DarkAlertDialog)
             .setView(view)
