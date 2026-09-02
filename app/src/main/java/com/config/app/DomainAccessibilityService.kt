@@ -19,7 +19,9 @@ class DomainAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "DomainVPN"
-        private const val COOLDOWN_MS = 2000L
+        private const val COOLDOWN_MS = 1500L
+        private const val MAX_NODES = 200
+        private const val MAX_DEPTH = 5
         private val URL_REGEX = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
         private val DOMAIN_REGEX = Regex("""(?:https?://)?(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[-a-zA-Z0-9]+)*)""")
     }
@@ -40,24 +42,55 @@ class DomainAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastTriggered < COOLDOWN_MS) return
 
-        // 1. Быстрая проверка текста события
-        val eventText = event.text?.joinToString(" ") ?: ""
-        val contentDesc = event.contentDescription?.toString() ?: ""
-        var url = extractUrl(eventText)
-        if (url.isEmpty()) url = extractUrl(contentDesc)
+        var url = ""
 
-        // 2. Если не нашли — быстрое сканирование дерева (только 30 узлов, 2 уровня)
+        // 1. Проверяем event.source — кликнутый узел (самый важный!)
+        val source = event.source
+        if (source != null) {
+            url = extractUrlFromNode(source)
+            source.recycle()
+        }
+
+        // 2. Проверяем текст события
+        if (url.isEmpty()) {
+            val eventText = event.text?.joinToString(" ") ?: ""
+            url = extractUrl(eventText)
+        }
+
+        // 3. Проверяем contentDescription события
+        if (url.isEmpty()) {
+            val contentDesc = event.contentDescription?.toString() ?: ""
+            url = extractUrl(contentDesc)
+        }
+
+        // 4. Проверяем packageName (если кликнули в Telegram/VK — проверяем домены)
+        if (url.isEmpty()) {
+            val pkg = event.packageName?.toString() ?: ""
+            val matchedByPkg = domains.firstOrNull { domain ->
+                pkg.contains(domain.removePrefix("www.").split(".")[0], ignoreCase = true)
+            }
+            if (matchedByPkg != null) {
+                lastTriggered = now
+                android.util.Log.d(TAG, "MATCHED by package: $matchedByPkg")
+                if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
+                    autoConnectVpn(matchedByPkg)
+                }
+                return
+            }
+        }
+
+        // 5. Глубокое сканирование дерева
         if (url.isEmpty()) {
             val root = rootInActiveWindow
             if (root != null) {
-                url = findUrlInWindowFast(root)
+                url = findUrlDeep(root)
                 root.recycle()
             }
         }
 
         if (url.isEmpty()) return
 
-        android.util.Log.d(TAG, "URL: $url")
+        android.util.Log.d(TAG, "URL found: $url")
 
         val matchedDomain = domains.firstOrNull { domain ->
             url.contains(domain, ignoreCase = true) ||
@@ -67,7 +100,6 @@ class DomainAccessibilityService : AccessibilityService() {
         if (matchedDomain != null) {
             lastTriggered = now
             android.util.Log.d(TAG, "MATCHED: $matchedDomain")
-
             if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
                 autoConnectVpn(matchedDomain)
             }
@@ -129,23 +161,48 @@ class DomainAccessibilityService : AccessibilityService() {
         return url.removePrefix("https://").removePrefix("http://").removePrefix("www.").split("/")[0].split(":")[0]
     }
 
-    // Быстрое сканирование — макс 30 узлов, 2 уровня вглубь
-    private fun findUrlInWindowFast(root: AccessibilityNodeInfo): String {
+    // Извлекаем URL из конкретного узла
+    private fun extractUrlFromNode(node: AccessibilityNodeInfo): String {
+        val sources = listOf(
+            node.text?.toString() ?: "",
+            node.contentDescription?.toString() ?: "",
+            node.hintText?.toString() ?: "",
+            node.viewIdResourceName ?: ""
+        )
+        for (src in sources) {
+            if (src.isNotEmpty()) {
+                val extracted = extractUrl(src)
+                if (extracted.isNotEmpty()) return extracted
+            }
+        }
+        return ""
+    }
+
+    // Глубокое сканирование — макс 200 узлов, 5 уровней
+    private fun findUrlDeep(root: AccessibilityNodeInfo): String {
         var count = 0
-        val maxNodes = 30
         val queue = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
         queue.add(Pair(root, 0))
+        val visited = java.util.HashSet<Int>()
 
-        while (queue.isNotEmpty() && count < maxNodes) {
+        while (queue.isNotEmpty() && count < MAX_NODES) {
             val (node, depth) = queue.poll()
             count++
 
-            if (depth > 2) continue
+            if (depth > MAX_DEPTH) continue
 
-            // Проверяем text и contentDescription
+            // Уникальный ID узла
+            val nodeId = System.identityHashCode(node)
+            if (visited.contains(nodeId)) continue
+            visited.add(nodeId)
+
+            // Проверяем все возможные источники URL
             val text = node.text?.toString() ?: ""
             val desc = node.contentDescription?.toString() ?: ""
-            for (candidate in listOf(text, desc)) {
+            val hint = node.hintText?.toString() ?: ""
+            val viewId = node.viewIdResourceName ?: ""
+
+            for (candidate in listOf(text, desc, hint, viewId)) {
                 if (candidate.isNotEmpty()) {
                     val extracted = extractUrl(candidate)
                     if (extracted.isNotEmpty()) return extracted
