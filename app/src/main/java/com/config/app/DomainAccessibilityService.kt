@@ -1,6 +1,7 @@
 package com.config.app
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -9,9 +10,9 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,56 +22,75 @@ class DomainAccessibilityService : AccessibilityService() {
 
     private var vpnManager: VpnManager? = null
     private var domainStorage: DomainVpnStorage? = null
-    private var lastTriggered = 0L
     private val toastHandler = Handler(Looper.getMainLooper())
     private var lastToastTime = 0L
+    private val previousUrlDetections = HashMap<String, Long>()
 
     companion object {
         private const val TAG = "DomainVPN"
-        private const val COOLDOWN_MS = 2500L
+        private const val COOLDOWN_MS = 2000L
         private const val TOAST_COOLDOWN_MS = 2000L
-        private const val MAX_NODES = 1000
-        private const val MAX_DEPTH = 12
         private const val NOTIFICATION_ID_PREPARE = 3001
 
         private val URL_REGEX = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
         private val DOMAIN_REGEX = Regex("""(?:https?://)?(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[-a-zA-Z0-9]+)*)""")
 
-        // Пакеты, которые мы отслеживаем
-        private val TARGET_PACKAGES = setOf(
+        // === Browser configs: packageName -> addressBarId ===
+        private val BROWSER_CONFIGS = listOf(
+            BrowserConfig("com.android.chrome", "com.android.chrome:id/url_bar"),
+            BrowserConfig("com.chrome.beta", "com.chrome.beta:id/url_bar"),
+            BrowserConfig("com.chrome.dev", "com.chrome.dev:id/url_bar"),
+            BrowserConfig("com.chrome.canary", "com.chrome.canary:id/url_bar"),
+            BrowserConfig("org.mozilla.firefox", "org.mozilla.firefox:id/mozac_browser_toolbar_url_view"),
+            BrowserConfig("org.mozilla.firefox", "org.mozilla.firefox:id/url_bar_title"), // fallback
+            BrowserConfig("com.opera.browser", "com.opera.browser:id/url_field"),
+            BrowserConfig("com.opera.mini.native", "com.opera.mini.native:id/url_field"),
+            BrowserConfig("com.opera.mini.native.beta", "com.opera.mini.native.beta:id/url_field"),
+            BrowserConfig("com.duckduckgo.mobile.android", "com.duckduckgo.mobile.android:id/omnibarTextInput"),
+            BrowserConfig("com.microsoft.emmx", "com.microsoft.emmx:id/url_bar"),
+            BrowserConfig("com.microsoft.emmx.beta", "com.microsoft.emmx.beta:id/url_bar"),
+            BrowserConfig("com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser:id/location_bar_edit_text"),
+            BrowserConfig("com.sec.android.app.sbrowser.beta", "com.sec.android.app.sbrowser.beta:id/location_bar_edit_text"),
+            BrowserConfig("com.brave.browser", "com.brave.browser:id/url_bar"),
+            BrowserConfig("com.kiwibrowser.browser", "com.kiwibrowser.browser:id/url_bar"),
+            BrowserConfig("com.vivaldi.browser", "com.vivaldi.browser:id/url_bar"),
+            BrowserConfig("com.yandex.browser", "com.yandex.browser:id/omnibar_text"),
+        )
+
+        // Telegram packages
+        private val TELEGRAM_PACKAGES = setOf(
             "org.telegram.messenger",
             "org.telegram.messenger.web",
             "org.telegram.plus",
-            "com.whatsapp",
-            "com.vkontakte.android",
-            "com.facebook.katana",
-            "com.facebook.orca",
-            "com.instagram.android",
-            "com.zhiliaoapp.musically",
-            "com.twitter.android",
-            "com.discord",
-            "com.android.chrome",
-            "org.mozilla.firefox",
-            "com.opera.browser",
-            "com.yandex.browser",
-            "com.microsoft.emmx",
-            "com.sec.android.app.sbrowser",
-            "com.brave.browser",
-            "com.duckduckgo.mobile.android",
-            "com.vivaldi.browser"
-        )
-
-        // Activity-классы, которые сигнализируют об открытии веб-контента
-        private val WEBVIEW_CLASSES = setOf(
-            "webview", "web_view", "WebView", "Webview", "article", "Article",
-            "instant", "Instant", "browser", "Browser", "customtabs", "CustomTabs"
+            "org.thunderdog.challegram", // Telegram X
+            "nekogram.messenger",
+            "com.exteragram.messenger"
         )
     }
+
+    data class BrowserConfig(val packageName: String, val addressBarId: String)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         vpnManager = VpnManager.getInstance(this)
         domainStorage = DomainVpnStorage(this)
+
+        // Настраиваем сервис info программно для максимальной совместимости
+        val info = serviceInfo
+        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                          AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                          AccessibilityEvent.TYPE_WINDOWS_CHANGED or
+                          AccessibilityEvent.TYPE_VIEW_CLICKED or
+                          AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_VISUAL
+        info.notificationTimeout = 300
+        info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                     AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        // Не фильтруем по packageNames — ловим ВСЕ события
+        info.packageNames = null
+        serviceInfo = info
+
         showToast("Domain VPN: сервис запущен")
         android.util.Log.d(TAG, "=== Service connected ===")
         android.util.Log.d(TAG, "Domains: ${domainStorage?.getDomains()}")
@@ -85,113 +105,96 @@ class DomainAccessibilityService : AccessibilityService() {
         if (domains.isEmpty()) return
 
         val pkg = event.packageName?.toString() ?: ""
-        val className = event.className?.toString() ?: ""
         val eventType = event.eventType
         val eventName = eventTypeToName(eventType)
 
-        // Логируем ВСЕ события от target-пакетов
-        if (isTargetPackage(pkg)) {
-            android.util.Log.d(TAG, "[$eventName] pkg=$pkg class=$className")
+        android.util.Log.v(TAG, "[$eventName] pkg=$pkg")
+
+        // === СТРАТЕГИЯ 1: Браузер — ищем URL по ID адресной строки ===
+        val browserConfig = findBrowserConfig(pkg)
+        if (browserConfig != null) {
+            android.util.Log.d(TAG, "Browser detected: $pkg, looking for URL bar: ${browserConfig.addressBarId}")
+            val url = captureBrowserUrl(browserConfig)
+            if (url != null) {
+                android.util.Log.d(TAG, "Browser URL captured: $url")
+                processUrl(url, domains, "browser.id")
+                return
+            }
         }
 
-        val now = System.currentTimeMillis()
-        if (now - lastTriggered < COOLDOWN_MS) return
+        // === СТРАТЕГИЯ 2: Telegram — ищем URL в окне ===
+        if (isTelegramPackage(pkg)) {
+            android.util.Log.d(TAG, "Telegram event: $eventName pkg=$pkg")
 
-        // === СТРАТЕГИЯ 1: WINDOW_STATE_CHANGED ===
-        // Это главное событие при открытии WebView, браузера, Instant View
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            if (isTargetPackage(pkg)) {
-                android.util.Log.d(TAG, "WINDOW_STATE_CHANGED from target pkg=$pkg class=$className")
-
-                // Если это WebView-активность в Telegram — точно открылась ссылка
-                if (isWebViewActivity(className)) {
-                    android.util.Log.d(TAG, "Detected WebView activity: $className")
+            // Пробуем получить URL из window.title
+            val windows = windows
+            for (window in windows) {
+                val title = window.title?.toString() ?: ""
+                if (title.isNotEmpty() && !title.contains("Telegram") && !title.contains("Chat") && !title.contains("Channel")) {
+                    android.util.Log.d(TAG, "Window title: $title")
+                    val url = extractUrl(title)
+                    if (url.isNotEmpty()) {
+                        android.util.Log.d(TAG, "URL from window title: $url")
+                        processUrl(url, domains, "telegram.title")
+                        return
+                    }
                 }
+            }
 
-                // Сканируем ВСЕ окна на URL
-                val url = findUrlInAllWindows()
+            // Пробуем извлечь из event.text
+            val eventText = event.text?.joinToString(" ") ?: ""
+            if (eventText.isNotEmpty()) {
+                android.util.Log.d(TAG, "Telegram event.text: $eventText")
+                val url = extractUrl(eventText)
                 if (url.isNotEmpty()) {
-                    android.util.Log.d(TAG, "URL from windows scan: $url")
-                    processUrl(url, domains, now, "window.scan")
+                    android.util.Log.d(TAG, "URL from telegram event.text: $url")
+                    processUrl(url, domains, "telegram.text")
                     return
                 }
             }
-        }
 
-        // === СТРАТЕГИЯ 2: CLICK / LONG_CLICK ===
-        // При клике на ссылку внутри сообщения
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) {
-            if (isTargetPackage(pkg)) {
-                android.util.Log.d(TAG, "CLICK in target pkg=$pkg")
-
-                // Пробуем извлечь URL из event.text
-                val eventText = event.text?.joinToString(" ") ?: ""
-                if (eventText.isNotEmpty()) {
-                    android.util.Log.d(TAG, "event.text: $eventText")
-                    val url = extractUrl(eventText)
-                    if (url.isNotEmpty()) {
-                        android.util.Log.d(TAG, "URL from event.text: $url")
-                        processUrl(url, domains, now, "click.text")
-                        return
-                    }
-                }
-
-                // Пробуем извлечь из contentDescription
-                val contentDesc = event.contentDescription?.toString() ?: ""
-                if (contentDesc.isNotEmpty()) {
-                    android.util.Log.d(TAG, "contentDescription: $contentDesc")
-                    val url = extractUrl(contentDesc)
-                    if (url.isNotEmpty()) {
-                        android.util.Log.d(TAG, "URL from contentDescription: $url")
-                        processUrl(url, domains, now, "click.desc")
-                        return
-                    }
-                }
-
-                // Пробуем из event.source
-                val source = event.source
-                if (source != null) {
-                    val url = extractUrlFromNode(source)
-                    source.recycle()
-                    if (url.isNotEmpty()) {
-                        android.util.Log.d(TAG, "URL from source: $url")
-                        processUrl(url, domains, now, "click.source")
-                        return
-                    }
-                }
-
-                // Если ничего не нашли в событии — сканируем окна
-                val url2 = findUrlInAllWindows()
-                if (url2.isNotEmpty()) {
-                    android.util.Log.d(TAG, "URL from windows after click: $url2")
-                    processUrl(url2, domains, now, "click.windows")
-                    return
-                }
-            }
-        }
-
-        // === СТРАТЕГИЯ 3: CONTENT_CHANGED ===
-        // Когда меняется содержимое окна (загрузилась страница в WebView)
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (isTargetPackage(pkg)) {
-                val url = findUrlInAllWindows()
+            // Пробуем из contentDescription
+            val contentDesc = event.contentDescription?.toString() ?: ""
+            if (contentDesc.isNotEmpty()) {
+                val url = extractUrl(contentDesc)
                 if (url.isNotEmpty()) {
-                    android.util.Log.d(TAG, "URL from content changed: $url")
-                    processUrl(url, domains, now, "content.changed")
+                    android.util.Log.d(TAG, "URL from telegram contentDesc: $url")
+                    processUrl(url, domains, "telegram.desc")
+                    return
+                }
+            }
+
+            // Пробуем из event.source
+            val source = event.source
+            if (source != null) {
+                val url = extractUrlFromNode(source)
+                source.recycle()
+                if (url.isNotEmpty()) {
+                    android.util.Log.d(TAG, "URL from telegram source: $url")
+                    processUrl(url, domains, "telegram.source")
+                    return
+                }
+            }
+
+            // Глубокое сканирование всего окна Telegram
+            val root = rootInActiveWindow
+            if (root != null) {
+                val url = findUrlDeep(root)
+                root.recycle()
+                if (url.isNotEmpty()) {
+                    android.util.Log.d(TAG, "URL from telegram deep scan: $url")
+                    processUrl(url, domains, "telegram.deep")
                     return
                 }
             }
         }
 
-        // === СТРАТЕГИЯ 4: packageName совпадает с доменом ===
-        // Например, приложение rutracker.org
+        // === СТРАТЕГИЯ 3: packageName совпадает с доменом ===
         val matchedByPkg = domains.firstOrNull { domain ->
             val base = domain.removePrefix("www.").split(".")[0]
             pkg.contains(base, ignoreCase = true)
         }
         if (matchedByPkg != null) {
-            lastTriggered = now
             android.util.Log.d(TAG, "MATCH by package: $matchedByPkg")
             showToast("VPN: $matchedByPkg")
             triggerVpnConnect(matchedByPkg)
@@ -200,74 +203,42 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    // ==================== URL ПОИСК ====================
+    // ==================== BROWSER URL CAPTURE ====================
 
-    private fun findUrlInAllWindows(): String {
-        val windows = windows
-        android.util.Log.d(TAG, "Scanning ${windows.size} windows...")
-
-        for (window in windows) {
-            val root = window.root
-            if (root != null) {
-                val url = findUrlDeep(root)
-                root.recycle()
-                if (url.isNotEmpty()) {
-                    android.util.Log.d(TAG, "URL found in window '${window.title}': $url")
-                    return url
-                }
-            }
-        }
-        return ""
+    private fun findBrowserConfig(pkg: String): BrowserConfig? {
+        return BROWSER_CONFIGS.firstOrNull { it.packageName == pkg }
     }
 
-    private fun findUrlDeep(root: AccessibilityNodeInfo): String {
-        var count = 0
-        val queue = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
-        queue.add(Pair(root, 0))
-        val visited = java.util.HashSet<Int>()
+    private fun captureBrowserUrl(config: BrowserConfig): String? {
+        val root = rootInActiveWindow ?: return null
+        val nodes = root.findAccessibilityNodeInfosByViewId(config.addressBarId)
+        root.recycle()
 
-        while (queue.isNotEmpty() && count < MAX_NODES) {
-            val (node, depth) = queue.poll()
-            count++
-            if (depth > MAX_DEPTH) continue
-
-            val nodeId = System.identityHashCode(node)
-            if (visited.contains(nodeId)) continue
-            visited.add(nodeId)
-
-            val text = node.text?.toString() ?: ""
-            val desc = node.contentDescription?.toString() ?: ""
-            val hint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) node.hintText?.toString() ?: "" else ""
-
-            for (src in listOf(text, desc, hint)) {
-                if (src.isNotEmpty() && src.length > 4) {
-                    val extracted = extractUrl(src)
-                    if (extracted.isNotEmpty()) {
-                        android.util.Log.d(TAG, "Found URL at depth=$depth: $extracted (source: ${if (src == text) "text" else if (src == desc) "desc" else "hint"})")
-                        return extracted
-                    }
-                }
-            }
-
-            for (i in 0 until node.childCount) {
-                val child = node.getChild(i)
-                if (child != null) queue.add(Pair(child, depth + 1))
-            }
+        if (nodes.isNullOrEmpty()) {
+            android.util.Log.d(TAG, "No nodes found for id: ${config.addressBarId}")
+            return null
         }
-        android.util.Log.d(TAG, "Scanned $count nodes, no URL")
-        return ""
+
+        val node = nodes[0]
+        val url = node.text?.toString()
+        node.recycle()
+
+        if (url.isNullOrEmpty() || url == "Search or type URL") {
+            return null
+        }
+
+        // Chrome иногда показывает URL без https://
+        return if (url.startsWith("http")) url else "https://$url"
     }
+
+    // ==================== URL EXTRACTION ====================
 
     private fun extractUrl(text: String): String {
         if (text.isEmpty()) return ""
-        // Ищем полный URL
         val match = URL_REGEX.find(text)
         if (match != null) return match.value
-        // Ищем домен без протокола
         val domainMatch = DOMAIN_REGEX.find(text)
-        if (domainMatch != null) {
-            return "https://${domainMatch.groupValues[1]}"
-        }
+        if (domainMatch != null) return "https://${domainMatch.groupValues[1]}"
         return ""
     }
 
@@ -287,16 +258,64 @@ class DomainAccessibilityService : AccessibilityService() {
         return ""
     }
 
+    private fun findUrlDeep(root: AccessibilityNodeInfo): String {
+        var count = 0
+        val queue = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        queue.add(Pair(root, 0))
+        val visited = java.util.HashSet<Int>()
+
+        while (queue.isNotEmpty() && count < 1000) {
+            val (node, depth) = queue.poll()
+            count++
+            if (depth > 12) continue
+
+            val nodeId = System.identityHashCode(node)
+            if (visited.contains(nodeId)) continue
+            visited.add(nodeId)
+
+            val text = node.text?.toString() ?: ""
+            val desc = node.contentDescription?.toString() ?: ""
+            val hint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) node.hintText?.toString() ?: "" else ""
+
+            for (src in listOf(text, desc, hint)) {
+                if (src.isNotEmpty() && src.length > 4) {
+                    val extracted = extractUrl(src)
+                    if (extracted.isNotEmpty()) {
+                        android.util.Log.d(TAG, "Deep scan found URL at depth=$depth: $extracted")
+                        return extracted
+                    }
+                }
+            }
+
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i)
+                if (child != null) queue.add(Pair(child, depth + 1))
+            }
+        }
+        android.util.Log.d(TAG, "Deep scan checked $count nodes, no URL")
+        return ""
+    }
+
     private fun extractHost(url: String): String {
         return url.removePrefix("https://").removePrefix("http://").removePrefix("www.")
             .split("/")[0].split(":")[0]
     }
 
-    // ==================== ОБРАБОТКА ====================
+    // ==================== PROCESSING ====================
 
-    private fun processUrl(url: String, domains: Set<String>, now: Long, source: String) {
+    private fun processUrl(url: String, domains: Set<String>, source: String) {
         val host = extractHost(url)
         android.util.Log.d(TAG, "Processing URL [$source]: $url (host=$host)")
+
+        // Дедупликация: один и тот же URL не обрабатываем чаще 2 сек
+        val detectionId = "$source:$url"
+        val now = System.currentTimeMillis()
+        val lastTime = previousUrlDetections[detectionId] ?: 0L
+        if (now - lastTime < COOLDOWN_MS) {
+            android.util.Log.d(TAG, "Cooldown for: $detectionId")
+            return
+        }
+        previousUrlDetections[detectionId] = now
 
         val matched = domains.firstOrNull { domain ->
             url.contains(domain, ignoreCase = true) ||
@@ -305,23 +324,23 @@ class DomainAccessibilityService : AccessibilityService() {
         }
 
         if (matched != null) {
-            lastTriggered = now
             android.util.Log.d(TAG, "=== MATCHED: $matched ===")
             showToast("VPN: $matched")
             triggerVpnConnect(matched)
         } else {
-            android.util.Log.d(TAG, "No match for host: $host against $domains")
+            android.util.Log.d(TAG, "No match for host: $host")
         }
     }
 
+    // ==================== VPN TRIGGER ====================
+
     private fun triggerVpnConnect(domain: String) {
         if (VpnService.prepare(this) != null) {
-            android.util.Log.w(TAG, "VPN not prepared — showing notification")
+            android.util.Log.w(TAG, "VPN not prepared")
             showPrepareNotification(domain)
             return
         }
         val status = VpnManager.globalStatus
-        android.util.Log.d(TAG, "VPN status: $status")
         if (status == VpnStatus.DISCONNECTED || status == VpnStatus.ERROR) {
             autoConnectVpn(domain)
         } else {
@@ -330,7 +349,6 @@ class DomainAccessibilityService : AccessibilityService() {
     }
 
     private fun autoConnectVpn(domain: String) {
-        android.util.Log.d(TAG, "Auto-connecting for: $domain")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val servers = ServerStorage(this@DomainAccessibilityService).loadServers()
@@ -353,14 +371,10 @@ class DomainAccessibilityService : AccessibilityService() {
         }
     }
 
-    // ==================== УТИЛИТЫ ====================
+    // ==================== UTILS ====================
 
-    private fun isTargetPackage(pkg: String): Boolean {
-        return TARGET_PACKAGES.any { pkg.contains(it, ignoreCase = true) }
-    }
-
-    private fun isWebViewActivity(className: String): Boolean {
-        return WEBVIEW_CLASSES.any { className.contains(it, ignoreCase = true) }
+    private fun isTelegramPackage(pkg: String): Boolean {
+        return TELEGRAM_PACKAGES.any { pkg.contains(it, ignoreCase = true) }
     }
 
     private fun eventTypeToName(type: Int): String {
@@ -372,12 +386,13 @@ class DomainAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "TEXT_CHANGED"
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> "WINDOWS_CHANGED"
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> "SCROLLED"
             else -> "OTHER($type)"
         }
     }
 
-    // ==================== UI ====================
+    // ==================== NOTIFICATIONS ====================
 
     private fun showPrepareNotification(domain: String) {
         val channelId = "domain_vpn_prepare"
