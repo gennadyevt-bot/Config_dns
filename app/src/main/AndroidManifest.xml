@@ -48,6 +48,11 @@
             android:label="📘 Гайд" />
 
         <activity
+            android:name=".GuideActivity"
+            android:exported="false"
+            android:label="📘 Гайд" />
+
+        <activity
             android:name=".DomainVpnActivity"
             android:exported="false"
             android:label="Domain VPN" />
