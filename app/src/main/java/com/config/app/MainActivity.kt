@@ -117,7 +117,8 @@ class MainActivity : AppCompatActivity() {
                 R.id.navDomainVpn -> startActivity(android.content.Intent(this, DomainVpnActivity::class.java))
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v4.5.0 | WireGuard + Auto-Restore", Toast.LENGTH_SHORT).show()
+                R.id.navGuide -> startActivity(android.content.Intent(this, GuideActivity::class.java))
+                R.id.navAbout -> Toast.makeText(this, "DNS config v4.6.0 | WireGuard + Auto-Restore", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
