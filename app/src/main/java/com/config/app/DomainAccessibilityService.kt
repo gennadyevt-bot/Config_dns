@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,9 +36,15 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val storage = domainStorage ?: return
-        if (!storage.isEnabled()) return
+        if (!storage.isEnabled()) {
+            android.util.Log.d(TAG, "Domain VPN disabled")
+            return
+        }
         val domains = storage.getDomains()
-        if (domains.isEmpty()) return
+        if (domains.isEmpty()) {
+            android.util.Log.d(TAG, "No domains configured")
+            return
+        }
 
         val now = System.currentTimeMillis()
         if (now - lastTriggered < COOLDOWN_MS) return
@@ -45,18 +52,43 @@ class DomainAccessibilityService : AccessibilityService() {
         val eventText = event.text?.joinToString(" ") ?: ""
         val contentDesc = event.contentDescription?.toString() ?: ""
         val packageName = event.packageName?.toString() ?: ""
+        val className = event.className?.toString() ?: ""
 
+        // 1. Быстрый путь — из текста события
         var url = extractUrl(eventText)
         if (url.isEmpty()) url = extractUrl(contentDesc)
 
-        if (url.isEmpty()) return
+        // 2. Если пусто — сканируем корневое окно (быстро, без глубокой рекурсии)
+        if (url.isEmpty()) {
+            val root = rootInActiveWindow
+            if (root != null) {
+                url = findUrlInWindow(root)
+                root.recycle()
+            }
+        }
+
+        // 3. Для кликов по ссылкам — проверяем source события
+        if (url.isEmpty() && event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val source = event.source
+            if (source != null) {
+                val srcText = source.text?.toString() ?: ""
+                val srcDesc = source.contentDescription?.toString() ?: ""
+                url = extractUrl(srcText).ifEmpty { extractUrl(srcDesc) }
+                source.recycle()
+            }
+        }
+
+        if (url.isEmpty()) {
+            android.util.Log.v(TAG, "No URL found in event from $packageName")
+            return
+        }
 
         if (url != lastUrl) {
             isVpnAutoConnected = false
         }
         lastUrl = url
 
-        android.util.Log.d(TAG, "URL: $url from $packageName")
+        android.util.Log.d(TAG, "URL detected: $url from $packageName ($className)")
 
         val matchedDomain = domains.firstOrNull { domain ->
             url.contains(domain, ignoreCase = true) ||
@@ -68,7 +100,7 @@ class DomainAccessibilityService : AccessibilityService() {
             if (matchedDomain != lastMatchedDomain || !isVpnAutoConnected) {
                 lastMatchedDomain = matchedDomain
                 lastTriggered = now
-                android.util.Log.d(TAG, "MATCHED: $matchedDomain")
+                android.util.Log.d(TAG, "MATCHED domain: $matchedDomain")
 
                 if (VpnManager.globalStatus == VpnStatus.DISCONNECTED && !isVpnAutoConnected) {
                     isVpnAutoConnected = true
@@ -98,7 +130,7 @@ class DomainAccessibilityService : AccessibilityService() {
                     vpnManager?.connect(server)
                     android.util.Log.d(TAG, "Connected to ${server.name}")
                     showConnectedNotification(domain)
-                }
+                } ?: android.util.Log.e(TAG, "No valid server")
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Auto-connect failed", e)
             }
@@ -118,6 +150,45 @@ class DomainAccessibilityService : AccessibilityService() {
             .setAutoCancel(true)
             .build()
         getSystemService(NotificationManager::class.java)?.notify(2002, notification)
+    }
+
+    // БЫСТРОЕ сканирование — только корневой уровень + 1 уровень вглубь
+    private fun findUrlInWindow(root: AccessibilityNodeInfo): String {
+        // Проверяем сам root
+        val rootText = root.text?.toString() ?: ""
+        val rootDesc = root.contentDescription?.toString() ?: ""
+        val rootId = root.viewIdResourceName ?: ""
+
+        // Специальные ID для URL-баров в браузерах
+        if (rootId.contains("url", ignoreCase = true) ||
+            rootId.contains("address", ignoreCase = true) ||
+            rootId.contains("omnibox", ignoreCase = true) ||
+            rootId.contains("location", ignoreCase = true)) {
+            val result = extractUrl(rootText).ifEmpty { extractUrl(rootDesc) }
+            if (result.isNotEmpty()) return result
+        }
+
+        // Проверяем прямых детей (1 уровень)
+        for (i in 0 until minOf(root.childCount, 20)) {
+            val child = root.getChild(i) ?: continue
+            val childText = child.text?.toString() ?: ""
+            val childDesc = child.contentDescription?.toString() ?: ""
+            val childId = child.viewIdResourceName ?: ""
+
+            if (childId.contains("url", ignoreCase = true) ||
+                childId.contains("address", ignoreCase = true) ||
+                childId.contains("omnibox", ignoreCase = true)) {
+                val result = extractUrl(childText).ifEmpty { extractUrl(childDesc) }
+                child.recycle()
+                if (result.isNotEmpty()) return result
+            }
+
+            // Если текст похож на URL
+            val extracted = extractUrl(childText).ifEmpty { extractUrl(childDesc) }
+            child.recycle()
+            if (extracted.isNotEmpty()) return extracted
+        }
+        return ""
     }
 
     private fun extractUrl(text: String): String {
