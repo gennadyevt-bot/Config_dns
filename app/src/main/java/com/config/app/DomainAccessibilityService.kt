@@ -3,7 +3,6 @@ package com.config.app
 import android.accessibilityservice.AccessibilityService
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Intent
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
@@ -17,6 +16,7 @@ class DomainAccessibilityService : AccessibilityService() {
     private var domainStorage: DomainVpnStorage? = null
     private var lastTriggered = 0L
     private var lastUrl = ""
+    private var lastMatchedDomain = ""
     private var isVpnAutoConnected = false
 
     companion object {
@@ -42,31 +42,21 @@ class DomainAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastTriggered < COOLDOWN_MS) return
 
-        // Извлекаем URL из текста события — БЫСТРО, без сканирования дерева
         val eventText = event.text?.joinToString(" ") ?: ""
         val contentDesc = event.contentDescription?.toString() ?: ""
-        val className = event.className?.toString() ?: ""
         val packageName = event.packageName?.toString() ?: ""
 
         var url = extractUrl(eventText)
         if (url.isEmpty()) url = extractUrl(contentDesc)
 
-        // Для кликов по ссылкам в чатах (Telegram, VK, WhatsApp)
-        if (url.isEmpty() && event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            // Пробуем найти URL в дополнительных данных
-            val recordText = event.records?.map { it.text?.joinToString(" ") ?: "" }?.joinToString(" ") ?: ""
-            url = extractUrl(recordText)
-        }
-
         if (url.isEmpty()) return
 
-        // Если URL изменился — сбрасываем флаг
         if (url != lastUrl) {
             isVpnAutoConnected = false
         }
         lastUrl = url
 
-        android.util.Log.d(TAG, "Detected URL: $url (from $packageName, class=$className)")
+        android.util.Log.d(TAG, "URL: $url from $packageName")
 
         val matchedDomain = domains.firstOrNull { domain ->
             url.contains(domain, ignoreCase = true) ||
@@ -78,7 +68,7 @@ class DomainAccessibilityService : AccessibilityService() {
             if (matchedDomain != lastMatchedDomain || !isVpnAutoConnected) {
                 lastMatchedDomain = matchedDomain
                 lastTriggered = now
-                android.util.Log.d(TAG, "MATCHED domain: $matchedDomain")
+                android.util.Log.d(TAG, "MATCHED: $matchedDomain")
 
                 if (VpnManager.globalStatus == VpnStatus.DISCONNECTED && !isVpnAutoConnected) {
                     isVpnAutoConnected = true
@@ -94,7 +84,7 @@ class DomainAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun autoConnectVpn(domain: String) {
-        android.util.Log.d(TAG, "Auto-connecting VPN for domain: $domain")
+        android.util.Log.d(TAG, "Auto-connecting for: $domain")
         val context = this
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -106,9 +96,9 @@ class DomainAccessibilityService : AccessibilityService() {
                 }
                 validServer?.let { server ->
                     vpnManager?.connect(server)
-                    android.util.Log.d(TAG, "VPN auto-connected to ${server.name}")
+                    android.util.Log.d(TAG, "Connected to ${server.name}")
                     showConnectedNotification(domain)
-                } ?: android.util.Log.e(TAG, "No valid server found")
+                }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Auto-connect failed", e)
             }
@@ -123,7 +113,7 @@ class DomainAccessibilityService : AccessibilityService() {
         }
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("VPN активирован")
-            .setContentText("Автоматически подключен для $domain")
+            .setContentText("Для $domain")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setAutoCancel(true)
             .build()
