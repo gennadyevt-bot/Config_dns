@@ -1,168 +1,78 @@
-# Config — Android VPN Client (AmneziaWG)
+# Config VPN — Android клиент (WireGuard / AmneziaWG)
 
-Android-приложение для подключения к VPN-серверам через протокол **WireGuard / AmneziaWG**. Поддерживает до 6 конфигураций, бэкап/восстановление, авто-подключение и виджет рабочего стола.
-
----
-
-## 📱 Скриншот
-
-Зелёный интерфейс с 6 слотами для конфигов, Drawer-меню и индикатором статуса.
+Приложение для подключения к VPN через протокол **WireGuard / AmneziaWG**. До 6 конфигураций, авто-подключение, App VPN, бэкап, виджет.
 
 ---
 
-## 🚀 Быстрый старт
+## ⬇ Скачать
 
-### Скачать APK
-
-Последняя версия: **[Config v1.0.5](https://github.com/gennadyevt-bot/Config_dns/releases/download/v1.0.3/Config_v1.0.3.apk)**
-
-### Сборка из исходников
-
-```bash
-git clone https://github.com/gennadyevt-bot/Config_dns.git
-cd Config_dns
-./gradlew assembleDebug
-```
-
-APK будет в `app/build/outputs/apk/debug/app-debug.apk`.
+| Версия | Ссылка |
+|---|---|
+| **v4.6.0** (последняя) | [Config_v4.6.0.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.6.0/Config_v4.6.0.apk) |
 
 ---
 
-## 📁 Структура проекта
+## 📘 Быстрый старт
 
-```
-Config_dns/
-├── .github/workflows/android.yml   # CI/CD (GitHub Actions)
-├── app/
-│   ├── build.gradle.kts            # Зависимости и настройки сборки
-│   └── src/main/
-│       ├── AndroidManifest.xml     # Манифест с VpnService и FileProvider
-│       ├── java/com/config/app/
-│       │   ├── MainActivity.kt     # Главный экран, UI, Drawer, диалоги
-│       │   ├── VpnManager.kt       # Управление VPN через GoBackend
-│       │   ├── WgTunnel.kt         # Реализация Tunnel для AmneziaWG
-│       │   ├── ServerInfo.kt       # Data class конфигурации сервера
-│       │   ├── VpnStatus.kt        # Enum статусов подключения
-│       │   ├── ServerAdapter.kt    # RecyclerView адаптер для списка серверов
-│       │   ├── ServerStorage.kt    # Сохранение конфигов в SharedPreferences (JSON)
-│       │   ├── ServerBackupManager.kt  # Экспорт/импорт бэкапов
-│       │   ├── AutoConnectStorage.kt   # Настройка авто-подключения
-│       │   └── StopVpnWidget.kt    # Виджет рабочего стола
-│       └── res/
-│           ├── layout/
-│           │   ├── activity_main.xml       # Главный экран (DrawerLayout)
-│           │   ├── item_server.xml         # Карточка сервера
-│           │   ├── dialog_add_server.xml   # Диалог добавления конфига
-│           │   ├── dialog_edit_server.xml  # Диалог редактирования
-│           │   ├── nav_header.xml          # Шапка Drawer-меню
-│           │   └── widget_stop_vpn.xml     # Layout виджета
-│           ├── drawable/
-│           │   ├── menu_container_bg.xml   # Фон меню
-│           │   ├── nav_item_bg.xml         # Селектор пунктов меню
-│           │   ├── ic_menu.xml             # Иконка гамбургер
-│           │   ├── ic_menu_backup.xml      # Иконка Backup
-│           │   ├── ic_menu_auto.xml        # Иконка Auto Connect
-│           │   └── ic_menu_about.xml       # Иконка About
-│           ├── menu/
-│           │   └── drawer_menu.xml         # Пункты Drawer-меню
-│           ├── values/
-│           │   ├── strings.xml             # Строки
-│           │   ├── colors.xml              # Цвета (зелёная тема)
-│           │   └── themes.xml              # Тема MaterialComponents
-│           └── xml/
-│               ├── config_widget_info.xml  # Провайдер виджета
-│               └── file_provider_paths.xml # Пути FileProvider
-├── build.gradle.kts                # Root build script
-├── settings.gradle.kts             # Настройки Gradle
-└── gradle.properties               # Свойства Gradle
-```
+### 1. Установка и первый запуск
+1. Скачай APK → установи
+2. Открой приложение → нажми **CONNECT** на любом сервере
+3. Android спросит разрешение VPN → нажми **"Разрешить"** (один раз)
+
+### 2. Добавить сервер
+- **Вручную**: Меню (☰) → Добавить сервер → вставь ключи
+- **QR-код**: Нажми "QR" → отсканируй код
+- **Файл**: Нажми "Файлы" → выбери `.conf` или картинку с QR
+
+### 3. Подключить / Отключить
+- **CONNECT** — включить VPN
+- **STOP** — отключить VPN
+
+### 4. App VPN (авто-включение по приложению)
+1. Меню (☰) → **App VPN**
+2. Выбери приложения (Telegram, Chrome...)
+3. Нажми **Сохранить**
+4. Открой выбранное приложение → VPN включится автоматически
+5. Закрой приложение → VPN отключится
+
+### 5. Domain VPN (экспериментально)
+1. Меню (☰) → **Domain VPN**
+2. Добавь домены (например: `rutracker.org`)
+3. Включи **Accessibility Service** в настройках телефона
+4. При переходе по ссылкам на эти домены VPN включится
+
+### 6. Бэкап
+- Меню (☰) → **Backup** → Share → отправь JSON-файл
+- На новом телефоне: Файлы → выбери JSON → импортируй
+
+### 7. Авто-подключение при запуске
+- Меню (☰) → **Auto Connect** → включи тумблер
 
 ---
 
-## 🔧 Технологии
+## ⚙️ Разрешения телефона (обязательно!)
 
-| Компонент | Версия |
-|-----------|--------|
-| compileSdk | 34 |
-| minSdk | 24 (Android 7.0) |
-| targetSdk | 34 |
-| Kotlin | 2.0.21 |
-| Gradle | 8.7 |
-| JDK | 17 |
-| AmneziaWG | 2.3.7 |
-| AndroidX Core | 1.12.0 |
-| Material Components | 1.11.0 |
-| Coroutines | 1.7.3 |
+Чтобы VPN не отключался:
+
+| Разрешение | Где включить | Зачем |
+|---|---|---|
+| **Не ограничивать батарею** | Настройки → Приложения → Config → Батарея → "Не ограничивать" | Чтобы система не убивала сервис |
+| **Автозапуск** | Настройки → Приложения → Config → Автозапуск → ВКЛ | Запуск после перезагрузки |
+| **Не приостанавливать** | Настройки → Приложения → Config → "Приостанавливать неиспользуемые" → ВЫКЛ | Не останавливать фоновый сервис |
+| **Статистика трафика** | Настройки → Приложения → Config → Статистика трафика → ВКЛ | Для App VPN (определение foreground app) |
+| **Accessibility** | Настройки → Спец. возможности → Config VPN Domain Service → ВКЛ | Для Domain VPN |
+| **Уведомления** | Настройки → Приложения → Config → Уведомления → ВКЛ | Статус VPN в шторке |
 
 ---
 
-## 🎯 Функционал
+## 🛠 Технологии
 
-- **6 слотов для конфигов** — добавляй, редактируй, удаляй WireGuard/AmneziaWG конфигурации
-- **Подключение по тапу** — CONNECT / STOP прямо в списке
-- **AmneziaWG обфускация** — поддержка Jc, Jmin, Jmax, S1, S2, H1-H4 (опционально)
-- **Бэкап** — экспорт всех конфигов в JSON через системный шаринг
-- **Авто-подключение** — автоматически подключается к первому валидному серверу при запуске
-- **Виджет** — виджет рабочего стола показывает статус VPN (ON/OFF)
-- **Drawer-меню** — Backup, Auto Connect, About
-
----
-
-## 🐛 История исправлений
-
-### v1.0.3
-- **Fix:** `NetworkOnMainThreadException` — `connect()`/`disconnect()` обёрнуты в `CoroutineScope(Dispatchers.IO)`
-- **Fix:** Корректные UI-callback'и через `withContext(Dispatchers.Main)`
-
-### v1.0.2
-- **Fix:** `Error: null` — `e.toString()` вместо `e.message` для реальной диагностики
-- **Fix:** Убраны AmneziaWG параметры из дефолтного конфига (plain WireGuard)
-- **Fix:** `VpnService exported="true"` + `foregroundServiceType="specialUse"`
-- **Add:** `Log.d` для отладки конфига перед парсингом
-
-### v1.0.1
-- **Fix:** `isIpv4ResolutionPreferred()` — исправлен тип с `Boolean?` на `Boolean`
-- **Fix:** `VpnManager` — корректное использование `peerAllowedIPs`, `peerPersistentKeepalive`, `PresharedKey`
-- **Fix:** Добавлен `FileProvider` для экспорта бэкапов
-- **Fix:** Добавлены недостающие иконки меню
-- **Add:** Авто-подключение при запуске приложения
-- **Add:** Обновление виджета при смене статуса VPN
-
-### v1.0.0
-- Первоначальный релиз
-
----
-
-## 🔐 Права доступа (AndroidManifest)
-
-- `INTERNET` — сетевое соединение
-- `ACCESS_NETWORK_STATE` — проверка состояния сети
-- `FOREGROUND_SERVICE` — фоновый сервис VPN
-- `FOREGROUND_SERVICE_SPECIAL_USE` — специальный foreground сервис (Android 14+)
-- `POST_NOTIFICATIONS` — уведомления о статусе VPN
-- `WAKE_LOCK` — предотвращение засыпания при подключении
-- `BIND_VPN_SERVICE` — создание VPN-туннеля
-
----
-
-## 🏗️ CI/CD
-
-GitHub Actions (`.github/workflows/android.yml`):
-- JDK 17 Temurin
-- Gradle 8.7
-- `gradle assembleDebug`
-- Автоматическая загрузка APK как артефакт
+- Kotlin, WireGuard/AmneziaWG, AndroidX
+- compileSdk 34, minSdk 24
+- CI/CD: GitHub Actions
 
 ---
 
 ## 📄 Лицензия
 
-Проект создан для личного использования.
-
----
-
-## 👤 Автор
-
-Создан на основе проекта **STOP VPN** (WireGuard/AmneziaWG, Kotlin, Android).
-
-<!-- CI trigger: 1788243202 -->
+Проект для личного использования.

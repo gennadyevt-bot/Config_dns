@@ -29,7 +29,6 @@ import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.HybridBinarizer
-import com.config.app.GuideActivity
 
 class MainActivity : AppCompatActivity() {
 
@@ -118,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                 R.id.navDomainVpn -> startActivity(android.content.Intent(this, DomainVpnActivity::class.java))
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navGuide -> startActivity(android.content.Intent(this, GuideActivity::class.java))
+                R.id.navGuide -> startActivity(android.content.Intent(this, com.config.app.GuideActivity::class.java))
                 R.id.navAbout -> Toast.makeText(this, "DNS config v4.6.0 | WireGuard + Auto-Restore", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
