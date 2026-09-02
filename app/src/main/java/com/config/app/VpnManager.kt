@@ -69,14 +69,29 @@ class VpnManager private constructor(private val context: Context) {
                     context.startService(serviceIntent)
                 }
 
-                val configString = buildConfigString(server)
+                val appVpnStorage = AppVpnStorage(context)
+                val includedApps = appVpnStorage.getSelectedPackages().toList()
+                val configString = buildConfigString(server, includedApps)
                 android.util.Log.d("ConfigVPN", "Config string: $configString")
 
                 val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
                 currentConfig = config
 
                 val tunnel = WgTunnel.getInstance()
-                backend.setState(tunnel, Tunnel.State.UP, config)
+                try {
+                    backend.setState(tunnel, Tunnel.State.UP, config)
+                } catch (e: Exception) {
+                    if (includedApps.isNotEmpty()) {
+                        android.util.Log.w("ConfigVPN", "Backend failed with IncludedApplications, retrying without...")
+                        val fallbackConfig = Config.parse(ByteArrayInputStream(buildConfigString(server).toByteArray()))
+                        backend.setState(tunnel, Tunnel.State.UP, fallbackConfig)
+                        withContext(Dispatchers.Main) {
+                            showToast("App VPN: приложение не найдено, VPN работает для всех")
+                        }
+                    } else {
+                        throw e
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.CONNECTED)
@@ -131,7 +146,7 @@ class VpnManager private constructor(private val context: Context) {
     fun getStatus(): VpnStatus = globalStatus
     fun getCurrentServer(): ServerInfo? = currentServer
 
-    private fun buildConfigString(server: ServerInfo): String {
+    private fun buildConfigString(server: ServerInfo, includedApps: List<String> = emptyList()): String {
         return buildString {
             appendLine("[Interface]")
             appendLine("Address = ${server.interfaceAddress}")
@@ -147,6 +162,13 @@ class VpnManager private constructor(private val context: Context) {
             if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
             if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
             if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
+
+            val pm = context.packageManager
+            val validApps = includedApps.filter { pkg ->
+                try { pm.getApplicationInfo(pkg, 0); true }
+                catch (e: Exception) { android.util.Log.w("ConfigVPN", "App not installed: $pkg"); false }
+            }
+            validApps.forEach { appendLine("IncludedApplications = $it") }
 
             appendLine("[Peer]")
             appendLine("PublicKey = ${server.peerPublicKey}")
