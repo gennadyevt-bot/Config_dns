@@ -2,6 +2,7 @@ package com.config.app
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.net.VpnService
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +19,7 @@ class VpnManager private constructor(private val context: Context) {
 
     private val backend: Backend = GoBackend(context.applicationContext)
     private var currentConfig: Config? = null
+    private val vpnStateStorage = VpnStateStorage(context)
 
     var onStatusChanged: ((VpnStatus) -> Unit)? = null
     var onServerChanged: ((ServerInfo?) -> Unit)? = null
@@ -55,6 +57,18 @@ class VpnManager private constructor(private val context: Context) {
                     updateStatus(VpnStatus.CONNECTING)
                 }
 
+                // Сохраняем состояние — VPN включается
+                vpnStateStorage.setWasConnected(true)
+                vpnStateStorage.setLastServer(server.id)
+
+                // Стартуем keep-alive сервис
+                val serviceIntent = Intent(context, VpnKeepAliveService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+
                 val appVpnStorage = AppVpnStorage(context)
                 val includedApps = appVpnStorage.getSelectedPackages().toList()
                 val excludedApps = appVpnStorage.getExcludedPackages().toList()
@@ -75,6 +89,7 @@ class VpnManager private constructor(private val context: Context) {
             } catch (e: Exception) {
                 val err = e.message ?: e.toString()
                 android.util.Log.e("ConfigVPN", "Connect failed", e)
+                vpnStateStorage.setWasConnected(false)
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.ERROR)
                     StopVpnWidget.updateWidget(context, VpnStatus.ERROR)
@@ -90,6 +105,13 @@ class VpnManager private constructor(private val context: Context) {
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.DISCONNECTING)
                 }
+
+                // Сохраняем состояние — VPN выключен
+                vpnStateStorage.setWasConnected(false)
+
+                // Останавливаем keep-alive сервис
+                context.stopService(Intent(context, VpnKeepAliveService::class.java))
+
                 val tunnel = WgTunnel.getInstance()
                 backend.setState(tunnel, Tunnel.State.DOWN, currentConfig)
                 withContext(Dispatchers.Main) {

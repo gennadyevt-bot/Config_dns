@@ -117,11 +117,26 @@ class MainActivity : AppCompatActivity() {
                 R.id.navDomainVpn -> startActivity(android.content.Intent(this, DomainVpnActivity::class.java))
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
-                R.id.navAbout -> Toast.makeText(this, "DNS config v4.4.0 | WireGuard + QR", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "DNS config v4.5.0 | WireGuard + Auto-Restore", Toast.LENGTH_SHORT).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
         }
+
+        // === АВТОВОССТАНОВЛЕНИЕ VPN ПРИ СТАРТЕ ===
+        val vpnStateStorage = VpnStateStorage(this)
+        if (vpnStateStorage.wasConnected()) {
+            val lastServerId = vpnStateStorage.getLastServer()
+            val lastServer = servers.find { it.id == lastServerId } ?: servers.firstOrNull { 
+                it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+            }
+            lastServer?.let {
+                selectedServer = it
+                serverAdapter.setSelectedServer(it.id)
+                requestVpnPermissionAndConnect(it)
+            }
+        }
+        // ==========================================
 
         val autoConnect = AutoConnectStorage(this)
         if (autoConnect.isEnabled()) {
