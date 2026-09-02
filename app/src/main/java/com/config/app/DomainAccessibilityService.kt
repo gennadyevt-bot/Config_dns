@@ -20,6 +20,7 @@ class DomainAccessibilityService : AccessibilityService() {
     private var lastTriggered = 0L
     private var lastUrl = ""
     private var lastMatchedDomain = ""
+    private var isVpnAutoConnected = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -35,7 +36,7 @@ class DomainAccessibilityService : AccessibilityService() {
         if (domains.isEmpty()) return
 
         val now = System.currentTimeMillis()
-        if (now - lastTriggered < 5000) return
+        if (now - lastTriggered < 3000) return
 
         var url = ""
         val eventText = event.text?.joinToString(" ") ?: ""
@@ -51,7 +52,12 @@ class DomainAccessibilityService : AccessibilityService() {
             }
         }
 
-        if (url.isEmpty() || url == lastUrl) return
+        if (url.isEmpty()) return
+
+        // Если URL изменился — сбрасываем флаг авто-подключения
+        if (url != lastUrl) {
+            isVpnAutoConnected = false
+        }
         lastUrl = url
 
         android.util.Log.d("DomainVPN", "Detected URL: $url")
@@ -60,22 +66,82 @@ class DomainAccessibilityService : AccessibilityService() {
             url.contains(domain, ignoreCase = true)
         }
 
-        if (matchedDomain != null && matchedDomain != lastMatchedDomain) {
-            lastMatchedDomain = matchedDomain
-            lastTriggered = now
-            android.util.Log.d("DomainVPN", "MATCHED domain: $matchedDomain")
+        if (matchedDomain != null) {
+            if (matchedDomain != lastMatchedDomain) {
+                lastMatchedDomain = matchedDomain
+                lastTriggered = now
+                android.util.Log.d("DomainVPN", "MATCHED domain: $matchedDomain")
 
-            if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
-                showVpnNotification(matchedDomain, url)
-            } else {
-                android.util.Log.d("DomainVPN", "VPN already connected")
+                if (VpnManager.globalStatus == VpnStatus.DISCONNECTED && !isVpnAutoConnected) {
+                    isVpnAutoConnected = true
+                    // === АВТОМАТИЧЕСКОЕ ПОДКЛЮЧЕНИЕ VPN ===
+                    autoConnectVpn(matchedDomain)
+                    // ======================================
+                } else {
+                    android.util.Log.d("DomainVPN", "VPN already connected or already auto-connected")
+                }
             }
+        } else {
+            // Ушли с сайта — сбрасываем
+            lastMatchedDomain = ""
+            isVpnAutoConnected = false
         }
     }
 
     override fun onInterrupt() {}
 
-    private fun showVpnNotification(domain: String, url: String) {
+    private fun autoConnectVpn(domain: String) {
+        android.util.Log.d("DomainVPN", "Auto-connecting VPN for domain: $domain")
+
+        val context = this
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val servers = ServerStorage(context).loadServers()
+                val validServer = servers.firstOrNull {
+                    it.interfacePrivateKey.isNotEmpty() &&
+                    it.peerPublicKey.isNotEmpty() &&
+                    it.peerEndpoint.isNotEmpty()
+                }
+                validServer?.let { server ->
+                    vpnManager?.connect(server)
+                    android.util.Log.d("DomainVPN", "VPN auto-connected to ${server.name}")
+                    showConnectedNotification(domain)
+                } ?: run {
+                    android.util.Log.e("DomainVPN", "No valid server found for auto-connect")
+                    showErrorNotification("Нет валидного сервера для подключения")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DomainVPN", "Auto-connect failed", e)
+                showErrorNotification("Ошибка подключения: ${e.message}")
+            }
+        }
+    }
+
+    private fun showConnectedNotification(domain: String) {
+        val channelId = "domain_vpn_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Domain VPN",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("VPN активирован")
+            .setContentText("Автоматически подключен для $domain")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(2002, notification)
+    }
+
+    private fun showErrorNotification(message: String) {
         val channelId = "domain_vpn_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -87,26 +153,16 @@ class DomainAccessibilityService : AccessibilityService() {
             nm.createNotificationChannel(channel)
         }
 
-        val connectIntent = Intent(applicationContext, VpnActionReceiver::class.java).apply {
-            action = "com.config.app.CONNECT_VPN"
-            putExtra("domain", domain)
-        }
-        val connectPending = PendingIntent.getBroadcast(
-            applicationContext, 0, connectIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Сайт требует VPN")
-            .setContentText("$domain обнаружен. Нажмите для подключения VPN.")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle("Domain VPN")
+            .setContentText(message)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.ic_menu_mylocation, "Подключить VPN", connectPending)
             .build()
 
         val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(2001, notification)
+        nm.notify(2003, notification)
     }
 
     private fun extractUrl(text: String): String {
