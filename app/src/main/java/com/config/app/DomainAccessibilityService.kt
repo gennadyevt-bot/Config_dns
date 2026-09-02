@@ -16,13 +16,10 @@ class DomainAccessibilityService : AccessibilityService() {
     private var vpnManager: VpnManager? = null
     private var domainStorage: DomainVpnStorage? = null
     private var lastTriggered = 0L
-    private var lastUrl = ""
-    private var lastMatchedDomain = ""
-    private var isVpnAutoConnected = false
 
     companion object {
         private const val TAG = "DomainVPN"
-        private const val COOLDOWN_MS = 1500L
+        private const val COOLDOWN_MS = 2000L
         private val URL_REGEX = Regex("""https?://[^\s<>"{}|\\^`\[\]]+""")
         private val DOMAIN_REGEX = Regex("""(?:https?://)?(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\.[-a-zA-Z0-9]+)*)""")
     }
@@ -36,80 +33,44 @@ class DomainAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val storage = domainStorage ?: return
-        if (!storage.isEnabled()) {
-            android.util.Log.d(TAG, "Domain VPN disabled")
-            return
-        }
+        if (!storage.isEnabled()) return
         val domains = storage.getDomains()
-        if (domains.isEmpty()) {
-            android.util.Log.d(TAG, "No domains configured")
-            return
-        }
+        if (domains.isEmpty()) return
 
         val now = System.currentTimeMillis()
         if (now - lastTriggered < COOLDOWN_MS) return
 
+        // 1. Быстрая проверка текста события
         val eventText = event.text?.joinToString(" ") ?: ""
         val contentDesc = event.contentDescription?.toString() ?: ""
-        val packageName = event.packageName?.toString() ?: ""
-        val className = event.className?.toString() ?: ""
-
-        // 1. Быстрый путь — из текста события
         var url = extractUrl(eventText)
         if (url.isEmpty()) url = extractUrl(contentDesc)
 
-        // 2. Если пусто — сканируем корневое окно (быстро, без глубокой рекурсии)
+        // 2. Если не нашли — быстрое сканирование дерева (только 30 узлов, 2 уровня)
         if (url.isEmpty()) {
             val root = rootInActiveWindow
             if (root != null) {
-                url = findUrlInWindow(root)
+                url = findUrlInWindowFast(root)
                 root.recycle()
             }
         }
 
-        // 3. Для кликов по ссылкам — проверяем source события
-        if (url.isEmpty() && event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            val source = event.source
-            if (source != null) {
-                val srcText = source.text?.toString() ?: ""
-                val srcDesc = source.contentDescription?.toString() ?: ""
-                url = extractUrl(srcText).ifEmpty { extractUrl(srcDesc) }
-                source.recycle()
-            }
-        }
+        if (url.isEmpty()) return
 
-        if (url.isEmpty()) {
-            android.util.Log.v(TAG, "No URL found in event from $packageName")
-            return
-        }
-
-        if (url != lastUrl) {
-            isVpnAutoConnected = false
-        }
-        lastUrl = url
-
-        android.util.Log.d(TAG, "URL detected: $url from $packageName ($className)")
+        android.util.Log.d(TAG, "URL: $url")
 
         val matchedDomain = domains.firstOrNull { domain ->
             url.contains(domain, ignoreCase = true) ||
-            extractHost(url).equals(domain, ignoreCase = true) ||
-            extractHost(url).endsWith(".$domain", ignoreCase = true)
+            extractHost(url).equals(domain, ignoreCase = true)
         }
 
         if (matchedDomain != null) {
-            if (matchedDomain != lastMatchedDomain || !isVpnAutoConnected) {
-                lastMatchedDomain = matchedDomain
-                lastTriggered = now
-                android.util.Log.d(TAG, "MATCHED domain: $matchedDomain")
+            lastTriggered = now
+            android.util.Log.d(TAG, "MATCHED: $matchedDomain")
 
-                if (VpnManager.globalStatus == VpnStatus.DISCONNECTED && !isVpnAutoConnected) {
-                    isVpnAutoConnected = true
-                    autoConnectVpn(matchedDomain)
-                }
+            if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
+                autoConnectVpn(matchedDomain)
             }
-        } else {
-            lastMatchedDomain = ""
-            isVpnAutoConnected = false
         }
     }
 
@@ -130,7 +91,7 @@ class DomainAccessibilityService : AccessibilityService() {
                     vpnManager?.connect(server)
                     android.util.Log.d(TAG, "Connected to ${server.name}")
                     showConnectedNotification(domain)
-                } ?: android.util.Log.e(TAG, "No valid server")
+                }
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Auto-connect failed", e)
             }
@@ -152,45 +113,6 @@ class DomainAccessibilityService : AccessibilityService() {
         getSystemService(NotificationManager::class.java)?.notify(2002, notification)
     }
 
-    // БЫСТРОЕ сканирование — только корневой уровень + 1 уровень вглубь
-    private fun findUrlInWindow(root: AccessibilityNodeInfo): String {
-        // Проверяем сам root
-        val rootText = root.text?.toString() ?: ""
-        val rootDesc = root.contentDescription?.toString() ?: ""
-        val rootId = root.viewIdResourceName ?: ""
-
-        // Специальные ID для URL-баров в браузерах
-        if (rootId.contains("url", ignoreCase = true) ||
-            rootId.contains("address", ignoreCase = true) ||
-            rootId.contains("omnibox", ignoreCase = true) ||
-            rootId.contains("location", ignoreCase = true)) {
-            val result = extractUrl(rootText).ifEmpty { extractUrl(rootDesc) }
-            if (result.isNotEmpty()) return result
-        }
-
-        // Проверяем прямых детей (1 уровень)
-        for (i in 0 until minOf(root.childCount, 20)) {
-            val child = root.getChild(i) ?: continue
-            val childText = child.text?.toString() ?: ""
-            val childDesc = child.contentDescription?.toString() ?: ""
-            val childId = child.viewIdResourceName ?: ""
-
-            if (childId.contains("url", ignoreCase = true) ||
-                childId.contains("address", ignoreCase = true) ||
-                childId.contains("omnibox", ignoreCase = true)) {
-                val result = extractUrl(childText).ifEmpty { extractUrl(childDesc) }
-                child.recycle()
-                if (result.isNotEmpty()) return result
-            }
-
-            // Если текст похож на URL
-            val extracted = extractUrl(childText).ifEmpty { extractUrl(childDesc) }
-            child.recycle()
-            if (extracted.isNotEmpty()) return extracted
-        }
-        return ""
-    }
-
     private fun extractUrl(text: String): String {
         if (text.isEmpty()) return ""
         val match = URL_REGEX.find(text)
@@ -205,5 +127,37 @@ class DomainAccessibilityService : AccessibilityService() {
 
     private fun extractHost(url: String): String {
         return url.removePrefix("https://").removePrefix("http://").removePrefix("www.").split("/")[0].split(":")[0]
+    }
+
+    // Быстрое сканирование — макс 30 узлов, 2 уровня вглубь
+    private fun findUrlInWindowFast(root: AccessibilityNodeInfo): String {
+        var count = 0
+        val maxNodes = 30
+        val queue = java.util.ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        queue.add(Pair(root, 0))
+
+        while (queue.isNotEmpty() && count < maxNodes) {
+            val (node, depth) = queue.poll()
+            count++
+
+            if (depth > 2) continue
+
+            // Проверяем text и contentDescription
+            val text = node.text?.toString() ?: ""
+            val desc = node.contentDescription?.toString() ?: ""
+            for (candidate in listOf(text, desc)) {
+                if (candidate.isNotEmpty()) {
+                    val extracted = extractUrl(candidate)
+                    if (extracted.isNotEmpty()) return extracted
+                }
+            }
+
+            // Добавляем детей
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i)
+                if (child != null) queue.add(Pair(child, depth + 1))
+            }
+        }
+        return ""
     }
 }
