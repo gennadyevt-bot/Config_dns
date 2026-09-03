@@ -90,15 +90,13 @@
 
     </FrameLayout>
 
-    <!-- Компактное меню-окошко: wrap_content высота, отступы со всех сторон -->
+    <!-- Плавающее меню с отступами со всех сторон -->
     <FrameLayout
         android:layout_width="260dp"
         android:layout_height="wrap_content"
-        android:layout_gravity="start|top"
-        android:layout_marginTop="48dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="48dp"
-        android:layout_marginBottom="120dp"
+        android:layout_gravity="start|center_vertical"
+        android:layout_margin="16dp"
+        android:elevation="12dp"
         android:background="@drawable/menu_container_bg">
 
         <com.google.android.material.navigation.NavigationView
