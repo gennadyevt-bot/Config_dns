@@ -3,7 +3,8 @@ package com.config.app
 object WgConfigParser {
 
     fun parse(configText: String): ServerInfo? {
-        val lines = configText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val text = ConfigSanitizer.sanitize(configText)
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
 
         var name = "QR Config"
