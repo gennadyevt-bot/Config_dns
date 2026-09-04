@@ -155,11 +155,39 @@ class VpnManager private constructor(private val context: Context) {
     fun getStatus(): VpnStatus = globalStatus
     fun getCurrentServer(): ServerInfo? = currentServer
 
+    private fun hasIPv6Address(address: String): Boolean {
+        return address.split(',').any { it.trim().contains(':') }
+    }
+
+    private fun sanitizeAllowedIPs(allowedIPs: String, interfaceAddress: String): String {
+        val entries = allowedIPs.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val v6 = hasIPv6Address(interfaceAddress)
+        val cleaned = entries.filter { entry ->
+            if (entry.contains(':')) {
+                // Никогда не маршрутизируем весь IPv6 в туннель (::/0) — без
+                // IPv6-адреса на интерфейсе это чёрная дыра и блокирует интернет.
+                entry != "::/0" && v6
+            } else {
+                true
+            }
+        }
+        return if (cleaned.isEmpty()) "0.0.0.0/0" else cleaned.joinToString(", ")
+    }
+
+    private fun sanitizeDns(dns: String, interfaceAddress: String): String {
+        val entries = dns.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val v6 = hasIPv6Address(interfaceAddress)
+        val cleaned = entries.filter { !it.contains(':') || v6 }
+        return if (cleaned.isEmpty()) "1.1.1.1" else cleaned.joinToString(", ")
+    }
+
     private fun buildConfigString(server: ServerInfo, includedApps: List<String> = emptyList()): String {
+        val allowedIPs = sanitizeAllowedIPs(server.peerAllowedIPs, server.interfaceAddress)
+        val dns = sanitizeDns(server.interfaceDns, server.interfaceAddress)
         return buildString {
             appendLine("[Interface]")
             appendLine("Address = ${server.interfaceAddress}")
-            appendLine("DNS = ${server.interfaceDns}")
+            appendLine("DNS = $dns")
             appendLine("PrivateKey = ${server.interfacePrivateKey}")
 
             // AWG parameters removed — standard WireGuard backend does not support them
@@ -176,7 +204,7 @@ class VpnManager private constructor(private val context: Context) {
             if (server.peerPresharedKey.isNotEmpty()) {
                 appendLine("PresharedKey = ${server.peerPresharedKey}")
             }
-            appendLine("AllowedIPs = ${server.peerAllowedIPs}")
+            appendLine("AllowedIPs = $allowedIPs")
             appendLine("Endpoint = ${server.peerEndpoint}")
             appendLine("PersistentKeepalive = ${server.peerPersistentKeepalive}")
         }
