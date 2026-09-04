@@ -8,7 +8,8 @@
 
 | Версия | Ссылка |
 |---|---|
-| **v4.6.0** (последняя) | [Config_v4.6.0.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.6.0/Config_v4.6.0.apk) |
+| **v4.7.5** (последняя) | [Config_v4.7.5.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.5/Config_v4.7.5.apk) |
+| v4.6.0 | [Config_v4.6.0.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.6.0/Config_v4.6.0.apk) |
 
 ---
 
@@ -33,7 +34,7 @@
 2. Выбери приложения (Telegram, Chrome...)
 3. Нажми **Сохранить**
 4. Открой выбранное приложение → VPN включится автоматически
-5. Закрой приложение → VPN отключится
+5. Закрой приложение → VPN отключится (через 60 сек)
 
 ### 5. Domain VPN (экспериментально)
 1. Меню (☰) → **Domain VPN**
