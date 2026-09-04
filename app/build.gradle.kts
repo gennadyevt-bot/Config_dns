@@ -11,8 +11,8 @@ android {
         applicationId = "com.config.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "4.7.5"
+        versionCode = 15
+        versionName = "4.7.6"
     }
 
     buildTypes {

@@ -8,7 +8,7 @@
 - **База:** STOP VPN v4.0.0 (WireGuard/AmneziaWG)
 - **Язык:** Kotlin
 - **Платформа:** Android (minSdk 24, targetSdk 34)
-- **Текущая версия приложения:** 4.7.5 (versionCode 14)
+- **Текущая версия приложения:** 4.7.6 (versionCode 15)
 - **VPN-библиотеки (две, обязательны):**
   - `com.wireguard.android:tunnel:1.0.20260102` — для серверов БЕЗ junk-параметров (здесь гарантированно работает App VPN / IncludedApplications)
   - `com.zaneschepke:amneziawg-android:2.3.7` — для серверов С junk-параметрами Jc/Jmin/Jmax/S1/S2/H1-H4 (обход DPI РНК)
@@ -80,7 +80,7 @@ CONNECT → VpnService.prepare() проверка
 | `WgConfigParser` | Парсинг .conf, извлечение AWG-параметров |
 | `ServerStorage` / `AppVpnStorage` / `VpnStateStorage` / `AutoConnectStorage` | SharedPreferences-хранилища |
 | `AppVpnActivity` / `AppMonitorService` | App VPN: выбор приложений + конфига, мониторинг foreground |
-| `VpnKeepAliveService` | Foreground keep-alive, переподключение |
+| `VpnKeepAliveService` | Foreground keep-alive, переподключение, индикатор прогресса в уведомлении |
 | `VpnActionReceiver` / `BootReceiver` / `AutoConnectManager` | Приёмники (виджет, загрузка) |
 | `StopVpnWidget` | Виджет подключения |
 
@@ -91,7 +91,7 @@ CONNECT → VpnService.prepare() проверка
 - **`git push` из среды Kimi ненадёжен (GnuTLS timeout)** — надёжный способ пуша: GitHub API: `POST /git/blobs` (base64) → `POST /git/trees` (base_tree = HEAD tree) → `POST /git/commits` (parent = HEAD) → `PATCH /git/refs/heads/main`. После пуша CI стартует автоматически.
 - Проверка CI: `GET /actions/runs`, детали: `GET /actions/runs/{id}/jobs`, логи: `GET /actions/runs/{id}/logs` (ZIP, смотреть `build/6_Assemble Debug.txt`, искать `e:` и `FAILURE`).
 - Скачивание APK: `GET /actions/runs/{id}/artifacts` → artifact_id → `GET /actions/artifacts/{id}/zip` (внутри app-debug.apk).
-- **APK выкладывать ТОЛЬКО через GitHub Release** (`POST /releases` → `POST /releases/{id}/assets?name=...apk`) и давать пользователю прямую ссылку `browser_download_url`. Sandbox-ссылки на большие APK (~56 МБ) не работают в приложении Kimi на телефоне.
+- **APK выкладывать ТОЛЬКО через GitHub Release** (`POST /releases` → `POST /releases/{id}/assets?name=...apk` на **uploads.github.com**) и давать пользователю прямую ссылку `browser_download_url`. Sandbox-ссылки на большие APK (~56 МБ) не работают в приложении Kimi на телефоне.
 - **Сбивка версий:** версия приложения (versionName) и git-теги разошлись: приложение v4.5.x, теги релизов v4.7.x (v4.5.x–v4.6.x теги заняты старой историей). Новые теги брать v4.7.x и далее.
 - Gradle: compileSdk 34, minSdk 24, targetSdk 34, JDK 17, Gradle 8.7, workflow `.github/workflows/android.yml` (assembleDebug + upload-artifact).
 
@@ -109,6 +109,7 @@ CONNECT → VpnService.prepare() проверка
 | 4.5.4 | Выбор конфига (Spinner) в экране App VPN |
 | 4.5.5 | Telegram IPv6 blackhole (fast-fail на IPv4 через VPN) |
 | 4.7.5 | AllowedIPs: `::/0` не вырезается, если у интерфейса ЕСТЬ IPv6-адрес — иначе IPv6-трафик Telegram шёл мимо туннеля в блок РНК. AppMonitor: grace-период 60 сек перед авто-отключением (быстрые переключения приложений не рвут VPN) + оценка отключения каждый тик |
+| 4.7.6 | Индикатор прогресса подключения (ненавязчивый): статус на экране тикает «CONNECTING… N сек», после 20 сек — «дольше обычного»; текст уведомления в шторке показывает «Подключение… N сек» |
 
 ---
 

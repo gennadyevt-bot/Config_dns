@@ -1,8 +1,5 @@
 package com.config.app
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -28,6 +25,10 @@ class VpnKeepAliveService : Service() {
     private var vpnManager: VpnManager? = null
     private var serverStorage: ServerStorage? = null
     private var vpnStateStorage: VpnStateStorage? = null
+
+    private var connectStartMs = 0L
+    private var lastSeenStatus: VpnStatus = VpnStatus.DISCONNECTED
+    private var statusTicker: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -57,8 +58,34 @@ class VpnKeepAliveService : Service() {
 
         // Периодическая проверка — переподключаем если VPN упал
         startKeepAliveCheck()
+        // Ненавязчивый индикатор: текст уведомления показывает прогресс подключения
+        startStatusTicker()
 
         return START_STICKY
+    }
+
+    private fun startStatusTicker() {
+        statusTicker = object : Runnable {
+            override fun run() {
+                val status = vpnManager?.getStatus() ?: VpnStatus.DISCONNECTED
+                if (status == VpnStatus.CONNECTING && lastSeenStatus != VpnStatus.CONNECTING) {
+                    connectStartMs = System.currentTimeMillis()
+                }
+                lastSeenStatus = status
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val text = when (status) {
+                    VpnStatus.CONNECTING -> {
+                        val secs = (System.currentTimeMillis() - connectStartMs) / 1000
+                        "Подключение… ${secs} сек (это нормально, ждите)"
+                    }
+                    VpnStatus.CONNECTED -> "VPN подключён"
+                    else -> "Мониторинг VPN подключения"
+                }
+                nm.notify(NOTIF_ID, buildNotification(text))
+                handler.postDelayed(this, 1000)
+            }
+        }
+        handler.post(statusTicker!!)
     }
 
     private fun startKeepAliveCheck() {
@@ -81,7 +108,7 @@ class VpnKeepAliveService : Service() {
         handler.post(checkRunnable!!)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(text: String = "Мониторинг VPN подключения"): Notification {
         createNotificationChannel()
 
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -94,7 +121,7 @@ class VpnKeepAliveService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Config VPN")
-            .setContentText("Мониторинг VPN подключения")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -121,6 +148,7 @@ class VpnKeepAliveService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         checkRunnable?.let { handler.removeCallbacks(it) }
+        statusTicker?.let { handler.removeCallbacks(it) }
         Log.i(TAG, "Service destroyed")
     }
 }
