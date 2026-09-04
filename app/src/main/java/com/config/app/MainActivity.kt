@@ -543,7 +543,7 @@ class MainActivity : AppCompatActivity() {
         val storage = AutoConnectStorage(this)
         AlertDialog.Builder(this)
             .setTitle("Auto Connect")
-            .setMessage("Auto-connect VPN on app launch?")
+            .setMessage("Automatically connect to first valid server on app start?")
             .setPositiveButton("Enable") { _, _ ->
                 storage.setEnabled(true)
                 Toast.makeText(this, "Auto connect enabled", Toast.LENGTH_SHORT).show()
@@ -588,10 +588,14 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (VpnManager.globalStatus != VpnStatus.CONNECTING) return
             val secs = (System.currentTimeMillis() - connectStartMs) / 1000
-            tvStatus.text = if (secs < 20) {
-                "Status: CONNECTING… ${secs} сек"
-            } else {
-                "Status: CONNECTING… ${secs} сек (дольше обычного, подождите)"
+            // Индикатор НЕ сразу: первые 5 секунд — обычный статус,
+            // задержка показывается только когда она реально началась.
+            if (secs >= 5) {
+                tvStatus.text = if (secs < 20) {
+                    "Status: CONNECTING… ${secs} сек (ждите)"
+                } else {
+                    "Status: CONNECTING… ${secs} сек (дольше обычного, подождите)"
+                }
             }
             connectTickHandler.postDelayed(this, 1000)
         }
