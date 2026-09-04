@@ -8,6 +8,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.widget.Button
 import android.widget.EditText
@@ -541,7 +543,7 @@ class MainActivity : AppCompatActivity() {
         val storage = AutoConnectStorage(this)
         AlertDialog.Builder(this)
             .setTitle("Auto Connect")
-            .setMessage("Automatically connect to first valid server on app start?")
+            .setMessage("Auto-connect VPN on app launch?")
             .setPositiveButton("Enable") { _, _ ->
                 storage.setEnabled(true)
                 Toast.makeText(this, "Auto connect enabled", Toast.LENGTH_SHORT).show()
@@ -570,5 +572,28 @@ class MainActivity : AppCompatActivity() {
             else -> android.graphics.Color.GRAY
         }
         tvStatus.setTextColor(color)
+
+        // Ненавязчивый тикер: пока идёт подключение, показываем секунды
+        // в том же маленьком статусе — чтобы было видно, что процесс живой.
+        connectTickHandler.removeCallbacks(connectTicker)
+        if (status == VpnStatus.CONNECTING) {
+            connectStartMs = System.currentTimeMillis()
+            connectTickHandler.post(connectTicker)
+        }
+    }
+
+    private val connectTickHandler = Handler(Looper.getMainLooper())
+    private var connectStartMs = 0L
+    private val connectTicker = object : Runnable {
+        override fun run() {
+            if (VpnManager.globalStatus != VpnStatus.CONNECTING) return
+            val secs = (System.currentTimeMillis() - connectStartMs) / 1000
+            tvStatus.text = if (secs < 20) {
+                "Status: CONNECTING… ${secs} сек"
+            } else {
+                "Status: CONNECTING… ${secs} сек (дольше обычного, подождите)"
+            }
+            connectTickHandler.postDelayed(this, 1000)
+        }
     }
 }
