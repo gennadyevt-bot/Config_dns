@@ -11,8 +11,8 @@ android {
         applicationId = "com.config.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "4.4.1"
+        versionCode = 8
+        versionName = "4.5.0"
     }
 
     buildTypes {
@@ -44,6 +44,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            pickFirsts += "**/libwg-go.so"
+        }
         resources {
             pickFirsts += listOf(
                 "META-INF/kotlin-stdlib-jdk7.kotlin_module",
@@ -82,6 +85,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.wireguard.android:tunnel:1.0.20260102")
+    implementation("com.zaneschepke:amneziawg-android:2.3.7")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
