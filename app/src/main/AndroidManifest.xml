@@ -61,13 +61,21 @@
             android:name=".AppMonitorService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn_keepalive" />
+        </service>
 
         <service
             android:name=".VpnKeepAliveService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpn_keepalive" />
+        </service>
 
         <service
             android:name=".DomainAccessibilityService"
