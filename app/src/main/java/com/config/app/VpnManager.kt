@@ -9,29 +9,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.wireguard.android.backend.Backend as WgBackend
-import com.wireguard.android.backend.GoBackend as WgGoBackend
-import com.wireguard.android.backend.Tunnel as WgBackendTunnel
-import com.wireguard.config.Config as WgConfig
-import org.amnezia.awg.backend.Backend as AwgBackend
-import org.amnezia.awg.backend.GoBackend as AwgGoBackend
+import org.amnezia.awg.backend.Backend
+import org.amnezia.awg.backend.GoBackend
 import org.amnezia.awg.backend.NoopTunnelActionHandler
-import org.amnezia.awg.backend.Tunnel as AwgBackendTunnel
-import org.amnezia.awg.config.Config as AwgConfig
+import org.amnezia.awg.backend.Tunnel
+import org.amnezia.awg.config.Config
 import java.io.ByteArrayInputStream
 
 class VpnManager private constructor(private val context: Context) {
 
-    // Стандартный WireGuard: поддерживает IncludedApplications (App VPN)
-    private val wgBackend: WgBackend = WgGoBackend(context.applicationContext)
+    // Единый AmneziaWG-бэкенд (проверенная рабочая сборка, как в STOP VPN v4.0.0):
+    // - junk-параметры Jc/Jmin/Jmax/S1/S2/H1-H4 маскируют WireGuard от DPI РНК;
+    // - IncludedApplications поддерживается библиотекой → App VPN работает;
+    // - VpnService стартует автоматически из AAR (AbstractBackend$VpnService).
+    private val backend: Backend = GoBackend(context.applicationContext, NoopTunnelActionHandler())
 
-    // AmneziaWG: junk-параметры Jc/Jmin/Jmax/S1/S2/H1-H4 маскируют трафик
-    // от DPI РНК. НЕ поддерживает IncludedApplications — поэтому два бэкенда.
-    private val awgBackend: AwgBackend = AwgGoBackend(context.applicationContext, NoopTunnelActionHandler())
-
-    private var currentWgConfig: WgConfig? = null
-    private var currentAwgConfig: AwgConfig? = null
-    private var usingAwg = false
+    private var currentConfig: Config? = null
     private val vpnStateStorage = VpnStateStorage(context)
 
     var onStatusChanged: ((VpnStatus) -> Unit)? = null
@@ -95,13 +88,27 @@ class VpnManager private constructor(private val context: Context) {
 
                 val includedApps = AppVpnStorage(context).getSelectedPackages().toList()
 
-                // Конфиг с junk-параметрами (AmneziaWG) идёт через AWG-бэкенд —
-                // он обходит DPI РНК. Обычные конфиги — через WireGuard с App VPN.
-                val wantsAwg = server.jc.isNotEmpty() && server.jc != "0"
-                if (wantsAwg) {
-                    connectAwg(server, includedApps)
-                } else {
-                    connectWg(server, includedApps)
+                val configString = buildConfigString(server, includedApps)
+                android.util.Log.d("ConfigVPN", "AWG config: $configString")
+
+                val config = Config.parse(ByteArrayInputStream(configString.toByteArray()))
+                currentConfig = config
+
+                val tunnel = AwgTunnel.getInstance()
+                try {
+                    backend.setState(tunnel, Tunnel.State.UP, config)
+                } catch (e: Exception) {
+                    if (includedApps.isNotEmpty()) {
+                        // Фолбэк: без IncludedApplications (например, приложение удалено)
+                        android.util.Log.w("ConfigVPN", "Backend failed with IncludedApplications, retrying without...", e)
+                        val fallbackConfig = Config.parse(ByteArrayInputStream(buildConfigString(server).toByteArray()))
+                        backend.setState(tunnel, Tunnel.State.UP, fallbackConfig)
+                        withContext(Dispatchers.Main) {
+                            showToast("App VPN: приложение не найдено, VPN работает для всех")
+                        }
+                    } else {
+                        throw e
+                    }
                 }
 
                 withContext(Dispatchers.Main) {
@@ -121,53 +128,6 @@ class VpnManager private constructor(private val context: Context) {
         }
     }
 
-    private suspend fun connectWg(server: ServerInfo, includedApps: List<String>) {
-        val configString = buildConfigString(server, includedApps, withAwg = false)
-        android.util.Log.d("ConfigVPN", "WG config: $configString")
-
-        val config = WgConfig.parse(ByteArrayInputStream(configString.toByteArray()))
-        currentWgConfig = config
-        usingAwg = false
-
-        val tunnel = WgTunnel.getInstance()
-        try {
-            wgBackend.setState(tunnel, WgBackendTunnel.State.UP, config)
-        } catch (e: Exception) {
-            if (includedApps.isNotEmpty()) {
-                android.util.Log.w("ConfigVPN", "Backend failed with IncludedApplications, retrying without...")
-                val fallbackConfig = WgConfig.parse(ByteArrayInputStream(buildConfigString(server).toByteArray()))
-                wgBackend.setState(tunnel, WgBackendTunnel.State.UP, fallbackConfig)
-                withContext(Dispatchers.Main) {
-                    showToast("App VPN: приложение не найдено, VPN работает для всех")
-                }
-            } else {
-                throw e
-            }
-        }
-    }
-
-    private suspend fun connectAwg(server: ServerInfo, includedApps: List<String>) {
-        try {
-            val configString = buildConfigString(server, emptyList(), withAwg = true)
-            android.util.Log.d("ConfigVPN", "AWG config: $configString")
-
-            val config = AwgConfig.parse(ByteArrayInputStream(configString.toByteArray()))
-            currentAwgConfig = config
-            usingAwg = true
-
-            awgBackend.setState(AwgTunnel.getInstance(), AwgBackendTunnel.State.UP, config)
-            if (includedApps.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    showToast("AmneziaWG: App VPN не поддерживается для этого сервера, VPN работает для всех")
-                }
-            }
-        } catch (e: Exception) {
-            // Фолбэк: сервер не принял junk-параметры — пробуем обычный WireGuard
-            android.util.Log.w("ConfigVPN", "AWG failed, falling back to plain WireGuard", e)
-            connectWg(server, includedApps)
-        }
-    }
-
     fun disconnect() {
         scope.launch {
             try {
@@ -178,11 +138,7 @@ class VpnManager private constructor(private val context: Context) {
                 vpnStateStorage.setWasConnected(false)
                 context.stopService(Intent(context, VpnKeepAliveService::class.java))
 
-                if (usingAwg) {
-                    awgBackend.setState(AwgTunnel.getInstance(), AwgBackendTunnel.State.DOWN, currentAwgConfig)
-                } else {
-                    wgBackend.setState(WgTunnel.getInstance(), WgBackendTunnel.State.DOWN, currentWgConfig)
-                }
+                backend.setState(AwgTunnel.getInstance(), Tunnel.State.DOWN, currentConfig)
                 withContext(Dispatchers.Main) {
                     updateStatus(VpnStatus.DISCONNECTED)
                     currentServer = null
@@ -230,7 +186,7 @@ class VpnManager private constructor(private val context: Context) {
         return if (cleaned.isEmpty()) "1.1.1.1" else cleaned.joinToString(", ")
     }
 
-    private fun buildConfigString(server: ServerInfo, includedApps: List<String> = emptyList(), withAwg: Boolean = false): String {
+    private fun buildConfigString(server: ServerInfo, includedApps: List<String> = emptyList()): String {
         val allowedIPs = sanitizeAllowedIPs(server.peerAllowedIPs, server.interfaceAddress)
         val dns = sanitizeDns(server.interfaceDns, server.interfaceAddress)
         return buildString {
@@ -239,25 +195,24 @@ class VpnManager private constructor(private val context: Context) {
             appendLine("DNS = $dns")
             appendLine("PrivateKey = ${server.interfacePrivateKey}")
 
-            if (withAwg) {
-                // Junk-параметры AmneziaWG — маскируют WireGuard от DPI (обход блокировок РНК)
-                if (server.jc.isNotEmpty() && server.jc != "0") appendLine("Jc = ${server.jc}")
-                if (server.jmin.isNotEmpty() && server.jmin != "0") appendLine("Jmin = ${server.jmin}")
-                if (server.jmax.isNotEmpty() && server.jmax != "0") appendLine("Jmax = ${server.jmax}")
-                if (server.s1.isNotEmpty() && server.s1 != "0") appendLine("S1 = ${server.s1}")
-                if (server.s2.isNotEmpty() && server.s2 != "0") appendLine("S2 = ${server.s2}")
-                if (server.h1.isNotEmpty() && server.h1 != "0") appendLine("H1 = ${server.h1}")
-                if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
-                if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
-                if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
-            } else {
-                val pm = context.packageManager
-                val validApps = includedApps.filter { pkg ->
-                    try { pm.getApplicationInfo(pkg, 0); true }
-                    catch (e: Exception) { android.util.Log.w("ConfigVPN", "App not installed: $pkg"); false }
-                }
-                validApps.forEach { appendLine("IncludedApplications = $it") }
+            // Junk-параметры AmneziaWG — маскируют WireGuard от DPI (обход блокировок РНК).
+            // Пропускаем только если сервер их не поддерживает (значения 0).
+            if (server.jc.isNotEmpty() && server.jc != "0") appendLine("Jc = ${server.jc}")
+            if (server.jmin.isNotEmpty() && server.jmin != "0") appendLine("Jmin = ${server.jmin}")
+            if (server.jmax.isNotEmpty() && server.jmax != "0") appendLine("Jmax = ${server.jmax}")
+            if (server.s1.isNotEmpty() && server.s1 != "0") appendLine("S1 = ${server.s1}")
+            if (server.s2.isNotEmpty() && server.s2 != "0") appendLine("S2 = ${server.s2}")
+            if (server.h1.isNotEmpty() && server.h1 != "0") appendLine("H1 = ${server.h1}")
+            if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
+            if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
+            if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
+
+            val pm = context.packageManager
+            val validApps = includedApps.filter { pkg ->
+                try { pm.getApplicationInfo(pkg, 0); true }
+                catch (e: Exception) { android.util.Log.w("ConfigVPN", "App not installed: $pkg"); false }
             }
+            validApps.forEach { appendLine("IncludedApplications = $it") }
 
             appendLine("[Peer]")
             appendLine("PublicKey = ${server.peerPublicKey}")
