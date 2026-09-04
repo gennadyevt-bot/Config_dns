@@ -249,8 +249,24 @@ class VpnManager private constructor(private val context: Context) {
         return if (cleaned.isEmpty()) "1.1.1.1" else cleaned.joinToString(", ")
     }
 
+    // IPv6-диапазоны датацентров Telegram. Если у интерфейса нет IPv6-адреса,
+    // Telegram пробует свои v6-адреса В ОБХОД туннеля (мы ::/0 вырезаем,
+    // чтобы не было чёрной дыры) и упирается в блок РНК — приложение висит
+    // на «Connecting...». Маршрутизируем только эти префиксы в туннель:
+    // v6-пакеты мгновенно умирают (fast-fail), клиент сразу падает на IPv4
+    // и идёт через VPN. Остальной IPv6 интернета не трогаем.
+    private val telegramV6Blackhole = listOf(
+        "2001:67c:4e8::/48",
+        "2001:b28:f23d::/48",
+        "2001:b28:f23f::/48",
+        "2a0a:f280::/32"
+    )
+
     private fun buildConfigString(server: ServerInfo, includedApps: List<String> = emptyList(), withAwg: Boolean = false): String {
-        val allowedIPs = sanitizeAllowedIPs(server.peerAllowedIPs, server.interfaceAddress)
+        var allowedIPs = sanitizeAllowedIPs(server.peerAllowedIPs, server.interfaceAddress)
+        if (!hasIPv6Address(server.interfaceAddress)) {
+            allowedIPs += ", " + telegramV6Blackhole.joinToString(", ")
+        }
         val dns = sanitizeDns(server.interfaceDns, server.interfaceAddress)
         return buildString {
             appendLine("[Interface]")
