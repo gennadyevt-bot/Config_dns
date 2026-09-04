@@ -27,11 +27,14 @@ class AppMonitorService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val checkInterval = 2000L
+    private val disconnectGraceMs = 60_000L  // ушли ненадолго — VPN не рвём (реконнект ~30 сек)
     private var appVpnStorage: AppVpnStorage? = null
     private var lastSelectedPackages: Set<String> = emptySet()
     private var lastExcludedPackages: Set<String> = emptySet()
     private var lastForegroundApp: String = ""
     private var vpnTriggeredByAppMonitor = false
+    private var disconnectPending = false
+    private var pendingDisconnectRunnable: Runnable? = null
 
     private val runnable = object : Runnable {
         override fun run() {
@@ -67,6 +70,7 @@ class AppMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(runnable)
+        pendingDisconnectRunnable?.let { handler.removeCallbacks(it) }
         android.util.Log.d("AppMonitor", "Service destroyed")
     }
 
@@ -84,11 +88,16 @@ class AppMonitorService : Service() {
             return
         }
 
-        val foregroundApp = getForegroundApp() ?: return
-        if (foregroundApp == lastForegroundApp) return
-        lastForegroundApp = foregroundApp
+        // Соединение развалилось само — флаг «наше» больше не актуален
+        if (VpnManager.globalStatus == VpnStatus.ERROR) {
+            vpnTriggeredByAppMonitor = false
+        }
 
-        android.util.Log.d("AppMonitor", "Foreground app: $foregroundApp")
+        val foregroundApp = getForegroundApp() ?: return
+        if (foregroundApp != lastForegroundApp) {
+            lastForegroundApp = foregroundApp
+            android.util.Log.d("AppMonitor", "Foreground app: $foregroundApp")
+        }
 
         val selectedPackages = storage.getSelectedPackages()
         val excludedPackages = storage.getExcludedPackages()
@@ -103,22 +112,55 @@ class AppMonitorService : Service() {
             false
         }
 
-        android.util.Log.d("AppMonitor", "Should connect: $shouldConnect (selected=$selectedPackages, excluded=$excludedPackages)")
+        android.util.Log.d("AppMonitor", "Should connect: $shouldConnect (fg=$foregroundApp)")
 
         if (shouldConnect) {
+            cancelPendingDisconnect()
             if (VpnManager.globalStatus == VpnStatus.DISCONNECTED || VpnManager.globalStatus == VpnStatus.ERROR) {
                 android.util.Log.d("AppMonitor", "Auto-connecting for app: $foregroundApp")
                 vpnTriggeredByAppMonitor = true
                 autoConnectVpn()
             }
         } else {
-            // Если VPN был включён AppMonitor и foreground app больше не подходит — отключаем
+            // Отключаем не сразу, а через grace-период: быстрые переключения
+            // между приложениями не должны рвать VPN (реконнект ~30 сек).
             if (vpnTriggeredByAppMonitor && VpnManager.globalStatus == VpnStatus.CONNECTED) {
-                android.util.Log.d("AppMonitor", "Auto-disconnecting, app changed: $foregroundApp")
+                scheduleDisconnect()
+            }
+        }
+    }
+
+    private fun scheduleDisconnect() {
+        if (disconnectPending) return
+        disconnectPending = true
+        android.util.Log.d("AppMonitor", "Scheduling disconnect in ${disconnectGraceMs / 1000}s")
+        val r = Runnable {
+            disconnectPending = false
+            pendingDisconnectRunnable = null
+            val storage = appVpnStorage
+            if (storage == null || !storage.isEnabled()) return@Runnable
+            val fg = lastForegroundApp
+            val stillRelevant = if (storage.getSelectedPackages().isNotEmpty()) {
+                storage.getSelectedPackages().contains(fg)
+            } else if (storage.getExcludedPackages().isNotEmpty()) {
+                !storage.getExcludedPackages().contains(fg)
+            } else false
+            if (!stillRelevant && vpnTriggeredByAppMonitor && VpnManager.globalStatus == VpnStatus.CONNECTED) {
+                android.util.Log.d("AppMonitor", "Grace period over, auto-disconnecting")
                 disconnectVpn()
                 vpnTriggeredByAppMonitor = false
             }
         }
+        pendingDisconnectRunnable = r
+        handler.postDelayed(r, disconnectGraceMs)
+    }
+
+    private fun cancelPendingDisconnect() {
+        if (!disconnectPending) return
+        disconnectPending = false
+        pendingDisconnectRunnable?.let { handler.removeCallbacks(it) }
+        pendingDisconnectRunnable = null
+        android.util.Log.d("AppMonitor", "Pending disconnect cancelled")
     }
 
     private fun getForegroundApp(): String? {
