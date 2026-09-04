@@ -154,7 +154,7 @@ class VpnManager private constructor(private val context: Context) {
 
     private suspend fun connectAwg(server: ServerInfo, includedApps: List<String>) {
         try {
-            val configString = buildConfigString(server, emptyList(), withAwg = true)
+            val configString = buildConfigString(server, includedApps, withAwg = true)
             android.util.Log.d("ConfigVPN", "AWG config: $configString")
 
             val config = AwgConfig.parse(ByteArrayInputStream(configString.toByteArray()))
@@ -162,11 +162,6 @@ class VpnManager private constructor(private val context: Context) {
             usingAwg = true
 
             awgBackend.setState(AwgTunnel.getInstance(), AwgBackendTunnel.State.UP, config)
-            if (includedApps.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    showToast("AmneziaWG: App VPN не поддерживается для этого сервера, VPN работает для всех")
-                }
-            }
 
             warnIfNoTraffic {
                 runCatching { awgBackend.getStatistics(AwgTunnel.getInstance()).totalRx() }.getOrNull()
@@ -274,14 +269,16 @@ class VpnManager private constructor(private val context: Context) {
                 if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
                 if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
                 if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
-            } else {
-                val pm = context.packageManager
-                val validApps = includedApps.filter { pkg ->
-                    try { pm.getApplicationInfo(pkg, 0); true }
-                    catch (e: Exception) { android.util.Log.w("ConfigVPN", "App not installed: $pkg"); false }
-                }
-                validApps.forEach { appendLine("IncludedApplications = $it") }
             }
+
+            // App VPN: парсеры ОБЕИХ библиотек (WireGuard и AmneziaWG 2.3.7)
+            // поддерживают IncludedApplications — байткод GoBackend подтверждает.
+            val pm = context.packageManager
+            val validApps = includedApps.filter { pkg ->
+                try { pm.getApplicationInfo(pkg, 0); true }
+                catch (e: Exception) { android.util.Log.w("ConfigVPN", "App не установлено: $pkg"); false }
+            }
+            validApps.forEach { appendLine("IncludedApplications = $it") }
 
             appendLine("[Peer]")
             appendLine("PublicKey = ${server.peerPublicKey}")
