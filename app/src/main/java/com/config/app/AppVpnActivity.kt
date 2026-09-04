@@ -13,7 +13,9 @@ import android.text.TextWatcher
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ArrayAdapter
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -34,7 +36,9 @@ class AppVpnActivity : AppCompatActivity() {
     private lateinit var tvCounter: TextView
     private lateinit var toggleMode: MaterialButtonToggleGroup
     private lateinit var progressBar: ProgressBar
+    private lateinit var spServer: Spinner
     private lateinit var appVpnStorage: AppVpnStorage
+    private var serversList = listOf<ServerInfo>()
 
     private val allApps = mutableListOf<AppInfo>()
     private val filteredApps = mutableListOf<AppInfo>()
@@ -54,8 +58,19 @@ class AppVpnActivity : AppCompatActivity() {
         tvCounter = findViewById(R.id.tvCounter)
         toggleMode = findViewById(R.id.toggleMode)
         progressBar = findViewById(R.id.progressBar)
+        spServer = findViewById(R.id.spServer)
 
         rvApps.layoutManager = LinearLayoutManager(this)
+
+        // Выбор конфига (сервера) для App VPN
+        serversList = ServerStorage(this).loadServers()
+        val serverNames = serversList.map { it.name.ifEmpty { it.peerEndpoint.ifEmpty { "Сервер" } } }
+        val serverAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, serverNames)
+        serverAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spServer.adapter = serverAdapter
+        val savedServerId = appVpnStorage.getServerId()
+        val savedIdx = serversList.indexOfFirst { it.id == savedServerId }
+        spServer.setSelection(if (savedIdx >= 0) savedIdx else 0)
 
         if (!hasUsageStatsPermission()) {
             showPermissionDialog()
@@ -102,6 +117,11 @@ class AppVpnActivity : AppCompatActivity() {
             val enabled = selectedPackages.isNotEmpty()
             appVpnStorage.setEnabled(enabled)
 
+            val selIdx = spServer.selectedItemPosition
+            if (serversList.isNotEmpty() && selIdx in serversList.indices) {
+                appVpnStorage.setServerId(serversList[selIdx].id)
+            }
+
             if (enabled) {
                 AppMonitorService.start(this)
                 if (VpnManager.globalStatus == VpnStatus.DISCONNECTED) {
@@ -121,7 +141,11 @@ class AppVpnActivity : AppCompatActivity() {
 
     private fun autoConnectVpn() {
         val servers = ServerStorage(this).loadServers()
+        val serverId = appVpnStorage.getServerId()
+        // Сначала выбранный в App VPN конфиг, иначе первый валидный
         val validServer = servers.firstOrNull {
+            it.id == serverId && it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+        } ?: servers.firstOrNull {
             it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
         }
         validServer?.let { server ->

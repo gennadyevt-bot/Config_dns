@@ -24,6 +24,14 @@ class AppVpnStorage(context: Context) {
         return HashSet(prefs.getStringSet(EXCLUDED_KEY, emptySet()) ?: emptySet())
     }
 
+    fun setServerId(serverId: String) {
+        prefs.edit().putString(SERVER_ID_KEY, serverId).apply()
+    }
+
+    fun getServerId(): String {
+        return prefs.getString(SERVER_ID_KEY, "") ?: ""
+    }
+
     fun setEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(ENABLED_KEY, enabled).apply()
     }
@@ -37,5 +45,6 @@ class AppVpnStorage(context: Context) {
         private const val SELECTED_KEY = "selected_packages"
         private const val EXCLUDED_KEY = "excluded_packages"
         private const val ENABLED_KEY = "app_vpn_enabled"
+        private const val SERVER_ID_KEY = "app_vpn_server_id"
     }
 }

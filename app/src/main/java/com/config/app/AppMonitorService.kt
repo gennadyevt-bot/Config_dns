@@ -178,7 +178,11 @@ class AppMonitorService : Service() {
 
     private fun autoConnectVpn() {
         val servers = ServerStorage(this).loadServers()
+        val serverId = AppVpnStorage(this).getServerId()
+        // Сначала конфиг, выбранный в App VPN, иначе первый валидный
         val validServer = servers.firstOrNull {
+            it.id == serverId && it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
+        } ?: servers.firstOrNull {
             it.interfacePrivateKey.isNotEmpty() && it.peerPublicKey.isNotEmpty() && it.peerEndpoint.isNotEmpty()
         }
         validServer?.let { server ->
