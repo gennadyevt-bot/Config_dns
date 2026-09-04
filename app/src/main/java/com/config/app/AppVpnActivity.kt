@@ -159,7 +159,11 @@ class AppVpnActivity : AppCompatActivity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val pm = packageManager
-            val appList = mutableListOf<AppInfo>()
+            // Сначала список пакетов в фоне; иконки НЕ грузим здесь —
+            // loadIcon/getApplicationIcon вне главного потока первый раз
+            // возвращает заглушки, реальные иконки появлялись только
+            // при повторном открытии экрана.
+            val pkgList = mutableListOf<Pair<String, String>>()
 
             try {
                 val mainIntent = Intent(Intent.ACTION_MAIN, null)
@@ -171,20 +175,18 @@ class AppVpnActivity : AppCompatActivity() {
                     val pkg = ri.activityInfo.packageName
                     if (pkg == packageName || seen.contains(pkg)) continue
                     seen.add(pkg)
-
-                    val label = ri.loadLabel(pm).toString()
-                    val icon = ri.loadIcon(pm)
-                    val isSelected = selectedPackages.contains(pkg)
-
-                    appList.add(AppInfo(pkg, label, icon, isSelected))
+                    pkgList.add(pkg to ri.loadLabel(pm).toString())
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AppVpn", "Load apps failed: ${e.message}", e)
             }
 
-            appList.sortBy { it.appName.lowercase() }
-
             withContext(Dispatchers.Main) {
+                val appList = pkgList.map { (pkg, label) ->
+                    val icon = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null }
+                    AppInfo(pkg, label, icon, selectedPackages.contains(pkg))
+                }.sortedBy { it.appName.lowercase() }
+
                 allApps.clear()
                 allApps.addAll(appList)
                 filteredApps.clear()
