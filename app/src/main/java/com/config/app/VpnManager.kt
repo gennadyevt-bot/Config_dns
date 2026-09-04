@@ -162,15 +162,7 @@ class VpnManager private constructor(private val context: Context) {
             appendLine("DNS = ${server.interfaceDns}")
             appendLine("PrivateKey = ${server.interfacePrivateKey}")
 
-            if (server.jc.isNotEmpty() && server.jc != "0") appendLine("Jc = ${server.jc}")
-            if (server.jmin.isNotEmpty() && server.jmin != "0") appendLine("Jmin = ${server.jmin}")
-            if (server.jmax.isNotEmpty() && server.jmax != "0") appendLine("Jmax = ${server.jmax}")
-            if (server.s1.isNotEmpty() && server.s1 != "0") appendLine("S1 = ${server.s1}")
-            if (server.s2.isNotEmpty() && server.s2 != "0") appendLine("S2 = ${server.s2}")
-            if (server.h1.isNotEmpty() && server.h1 != "0") appendLine("H1 = ${server.h1}")
-            if (server.h2.isNotEmpty() && server.h2 != "0") appendLine("H2 = ${server.h2}")
-            if (server.h3.isNotEmpty() && server.h3 != "0") appendLine("H3 = ${server.h3}")
-            if (server.h4.isNotEmpty() && server.h4 != "0") appendLine("H4 = ${server.h4}")
+            // AWG parameters removed — standard WireGuard backend does not support them
 
             val pm = context.packageManager
             val validApps = includedApps.filter { pkg ->
