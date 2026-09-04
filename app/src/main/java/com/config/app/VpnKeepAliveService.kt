@@ -29,10 +29,6 @@ class VpnKeepAliveService : Service() {
     private var serverStorage: ServerStorage? = null
     private var vpnStateStorage: VpnStateStorage? = null
 
-    private var connectStartMs = 0L
-    private var lastSeenStatus: VpnStatus = VpnStatus.DISCONNECTED
-    private var statusTicker: Runnable? = null
-
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "Service created")
@@ -67,6 +63,10 @@ class VpnKeepAliveService : Service() {
         return START_STICKY
     }
 
+    private var connectStartMs = 0L
+    private var lastSeenStatus: VpnStatus = VpnStatus.DISCONNECTED
+    private var statusTicker: Runnable? = null
+
     private fun startStatusTicker() {
         statusTicker = object : Runnable {
             override fun run() {
@@ -79,7 +79,10 @@ class VpnKeepAliveService : Service() {
                 val text = when (status) {
                     VpnStatus.CONNECTING -> {
                         val secs = (System.currentTimeMillis() - connectStartMs) / 1000
-                        "Подключение… ${secs} сек (это нормально, ждите)"
+                        // Индикатор с задержкой: первые 5 секунд — короткий текст,
+                        // счётчик появляется только когда подключение затянулось.
+                        if (secs < 5) "Подключение…"
+                        else "Подключение… ${secs} сек (это нормально, ждите)"
                     }
                     VpnStatus.CONNECTED -> "VPN подключён"
                     else -> "Мониторинг VPN подключения"
