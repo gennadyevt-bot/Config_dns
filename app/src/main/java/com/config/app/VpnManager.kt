@@ -232,9 +232,11 @@ class VpnManager private constructor(private val context: Context) {
         val v6 = hasIPv6Address(interfaceAddress)
         val cleaned = entries.filter { entry ->
             if (entry.contains(':')) {
-                // Никогда не маршрутизируем весь IPv6 в туннель (::/0) — без
-                // IPv6-адреса на интерфейсе это чёрная дыра и блокирует интернет.
-                entry != "::/0" && v6
+                // IPv6-маршруты допустимы ТОЛЬКО если на интерфейсе есть IPv6-адрес —
+                // иначе это чёрная дыра («VPN блокирует интернет»). Но если адрес есть,
+                // ::/0 обязан остаться: иначе IPv6-трафик (Telegram!) идёт мимо туннеля
+                // прямым маршрутом и упирается в блокировку РНК.
+                v6
             } else {
                 true
             }
