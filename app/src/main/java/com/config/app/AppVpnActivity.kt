@@ -4,8 +4,12 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.provider.Settings
 import android.text.Editable
@@ -195,8 +199,41 @@ class AppVpnActivity : AppCompatActivity() {
                 rvApps.visibility = View.VISIBLE
                 updateCounter()
                 setupAdapter()
+                // Обход прогрева кэша PackageManager: первый запрос иконок
+                // в процессе может вернуть заглушки, кэш прогревается после
+                // первого прохода. Перезагружаем иконки автоматически —
+                // без ручного закрытия/открытия окна.
+                iconRetryCount = 0
+                iconHandler.postDelayed({ refreshIcons() }, 700)
             }
         }
+    }
+
+    private val iconHandler = Handler(Looper.getMainLooper())
+    private var iconRetryCount = 0
+
+    private fun refreshIcons() {
+        val pm = packageManager
+        var changed = false
+        for (app in allApps) {
+            val icon = try { pm.getApplicationIcon(app.packageName) } catch (e: Exception) { null }
+            if (icon != null && !isDefaultIcon(pm, icon)) {
+                if (app.icon !== icon) { app.icon = icon; changed = true }
+            } else if (icon == null) {
+                changed = true // попробуем ещё раз на следующем проходе
+            }
+        }
+        if (changed) rvApps.adapter?.notifyDataSetChanged()
+        iconRetryCount++
+        // Повторяем до 5 раз с интервалом, пока все иконки не станут настоящими
+        if (changed && iconRetryCount < 5) {
+            iconHandler.postDelayed({ refreshIcons() }, 700)
+        }
+    }
+
+    private fun isDefaultIcon(pm: PackageManager, icon: Drawable): Boolean {
+        val def = pm.defaultActivityIcon ?: return false
+        return if (icon is BitmapDrawable && def is BitmapDrawable) icon.bitmap == def.bitmap else false
     }
 
     private fun setupAdapter() {
