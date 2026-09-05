@@ -78,8 +78,21 @@ class AppVpnActivity : AppCompatActivity() {
 
         if (!hasUsageStatsPermission()) {
             showPermissionDialog()
-            return
+        } else {
+            initAppVpn()
         }
+    }
+
+    private var initialized = false
+
+    // Инициализация после выдачи разрешения Usage Stats.
+    // Первый запуск: разрешения нет → диалог → настройки → назад —
+    // onCreate уже отработал. Без этого блока после возврата список
+    // не грузился вообще, «пустое окно» лечилось только закрытием
+    // и повторным открытием.
+    private fun initAppVpn() {
+        if (initialized) return
+        initialized = true
 
         val savedSelected = appVpnStorage.getSelectedPackages()
         val savedExcluded = appVpnStorage.getExcludedPackages()
@@ -141,6 +154,15 @@ class AppVpnActivity : AppCompatActivity() {
         }
 
         loadApps()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Возврат из настроек с выданным разрешением — продолжаем
+        // инициализацию, которая не была выполнена в onCreate.
+        if (!initialized && hasUsageStatsPermission()) {
+            initAppVpn()
+        }
     }
 
     private fun autoConnectVpn() {
