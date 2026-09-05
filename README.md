@@ -8,7 +8,8 @@
 
 | Версия | Ссылка |
 |---|---|
-| **v4.7.9** (последняя) | [Config_v4.7.9.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.9/Config_v4.7.9.apk) |
+| **v4.7.10** (последняя) | [Config_v4.7.10.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.10/Config_v4.7.10.apk) |
+| v4.7.9 | [Config_v4.7.9.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.9/Config_v4.7.9.apk) |
 | v4.7.8 | [Config_v4.7.8.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.8/Config_v4.7.8.apk) |
 | v4.7.7 | [Config_v4.7.7.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.7/Config_v4.7.7.apk) |
 | v4.7.6 | [Config_v4.7.6.apk](https://github.com/gennadyevt-bot/Config_dns/releases/download/v4.7.6/Config_v4.7.6.apk) |
