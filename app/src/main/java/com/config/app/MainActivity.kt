@@ -48,6 +48,10 @@ class MainActivity : AppCompatActivity() {
     private var selectedServer: ServerInfo? = null
     private val servers = mutableListOf<ServerInfo>()
 
+    // id встроенных read-only серверов (слоты 1-3): выглядят как обычные,
+    // но редактирование/удаление/просмотр ключей недоступны
+    private val embeddedIds = mutableSetOf<String>()
+
     private var currentDialogView: View? = null
     private var currentDialogPosition: Int = -1
 
@@ -120,7 +124,7 @@ class MainActivity : AppCompatActivity() {
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
                 R.id.navGuide -> startActivity(android.content.Intent(this, com.config.app.GuideActivity::class.java))
-                R.id.navAbout -> Toast.makeText(this, "DNS config v4.6.0 | WireGuard + Auto-Restore", Toast.LENGTH_SHORT).show()
+                R.id.navAbout -> Toast.makeText(this, "Config VPN v5.0 | WireGuard + AmneziaWG | 3 встроенных сервера", Toast.LENGTH_LONG).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
             true
@@ -158,37 +162,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadServers() {
         servers.clear()
-        val saved = serverStorage.loadServers()
-        if (saved.isEmpty()) {
-            // Встроенный конфиг (assets/warp.conf) — тестовая сборка:
-            // один готовый сервер, добавление новых конфигов заблокировано.
-            servers.add(loadEmbeddedServer() ?: ServerInfo(
-                id = "slot_0",
-                name = "WARP",
-                peerAllowedIPs = "0.0.0.0/0"
-            ))
-            repeat(5) { index ->
-                servers.add(ServerInfo(
-                    id = "slot_${index + 1}",
-                    name = "Empty Slot",
-                    interfaceAddress = "",
-                    interfacePrivateKey = "",
-                    peerPublicKey = "",
-                    peerEndpoint = ""
-                ))
+        embeddedIds.clear()
+
+        // Встроенные серверы (read-only) — из assets
+        listOf("warp1.conf", "warp2.conf", "warp3.conf").forEachIndexed { index, assetName ->
+            loadEmbeddedServer(assetName, index)?.let { emb ->
+                servers.add(emb)
+                embeddedIds.add(emb.id)
             }
-            serverStorage.saveServers(servers)
-        } else {
-            servers.addAll(saved)
         }
+
+        // Пользовательские слоты (до 3) — с миграцией: убираем из хранилища
+        // дубликаты встроенных конфигов (сохранённые тестовой сборкой)
+        val saved = serverStorage.loadServers().filter { userSrv ->
+            embeddedIds.none { embId ->
+                val emb = servers.firstOrNull { it.id == embId }
+                emb != null && emb.interfacePrivateKey == userSrv.interfacePrivateKey
+            }
+        }.toMutableList()
+        while (saved.size < 3) {
+            saved.add(ServerInfo(id = "user_${saved.size}", name = "Empty Slot"))
+        }
+        servers.addAll(saved.take(3))
+        serverStorage.saveServers(saved.take(3))
     }
 
-    private fun loadEmbeddedServer(): ServerInfo? {
+    private fun saveUserServers() {
+        serverStorage.saveServers(servers.filter { it.id !in embeddedIds })
+    }
+
+        private fun loadEmbeddedServer(assetName: String, index: Int): ServerInfo? {
         return try {
-            val text = assets.open("warp.conf").bufferedReader().use { it.readText() }
-            WgConfigParser.parse(text)?.copy(id = "slot_0", name = "WARP")
+            val inputStream = assets.open(assetName)
+            val configText = inputStream.bufferedReader().use { it.readText() }
+            inputStream.close()
+            val config = WgConfigParser.parse(configText)
+            config?.copy(id = "emb_$index", name = "WARP ${index + 1}")
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }
@@ -207,15 +217,19 @@ class MainActivity : AppCompatActivity() {
             onStopClick = { _ ->
                 vpnManager.disconnect()
             },
-            onAddClick = { _, _ ->
-                // Тестовая сборка: добавление новых конфигов заблокировано
-                Toast.makeText(this, "Добавление конфигов недоступно в этой сборке", Toast.LENGTH_SHORT).show()
+            onAddClick = { _, position ->
+                if (servers.getOrNull(position)?.id in embeddedIds) return@ServerAdapter
+                showAddServerDialog(servers[position], position)
             },
             onLongPress = { server, position ->
+                if (server.id in embeddedIds) {
+                    Toast.makeText(this, "Встроенный сервер: редактирование недоступно", Toast.LENGTH_SHORT).show()
+                    return@ServerAdapter
+                }
                 if (hasValidConfig(server)) {
                     showEditServerDialog(server, position)
                 } else {
-                    Toast.makeText(this, "Добавление конфигов недоступно в этой сборке", Toast.LENGTH_SHORT).show()
+                    showAddServerDialog(server, position)
                 }
             }
         )
@@ -421,7 +435,7 @@ class MainActivity : AppCompatActivity() {
                     h1 = h1, h2 = h2, h3 = h3, h4 = h4
                 )
                 servers[position] = updated
-                serverStorage.saveServers(servers)
+                saveUserServers()
                 serverAdapter.notifyItemChanged(position)
                 Toast.makeText(this, "Config added", Toast.LENGTH_SHORT).show()
             }
@@ -501,7 +515,7 @@ class MainActivity : AppCompatActivity() {
                     h4 = etH4.text.toString().trim().ifEmpty { "0" }
                 )
                 servers[position] = updated
-                serverStorage.saveServers(servers)
+                saveUserServers()
                 serverAdapter.notifyItemChanged(position)
                 Toast.makeText(this, "Config updated", Toast.LENGTH_SHORT).show()
             }
