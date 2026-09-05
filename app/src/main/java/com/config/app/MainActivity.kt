@@ -160,19 +160,12 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         val saved = serverStorage.loadServers()
         if (saved.isEmpty()) {
-            servers.add(ServerInfo(
+            // Встроенный конфиг (assets/warp.conf) — тестовая сборка:
+            // один готовый сервер, добавление новых конфигов заблокировано.
+            servers.add(loadEmbeddedServer() ?: ServerInfo(
                 id = "slot_0",
-                name = "VPNJantit Premium USA",
-                interfaceAddress = "192.168.6.75/32",
-                interfaceDns = "1.1.1.1, 8.8.8.8",
-                interfacePrivateKey = "WLxO4K6sMjbqK4xclRnSkwnUzBMbTHhMoITliWk2zHs=",
-                peerPublicKey = "5EhTY/DjbqjL4M7v3KaMOl84FVt/ZtOnAKIGpQy4GSY=",
-                peerEndpoint = "premiusa2.vpnjantit.com:1024",
-                peerAllowedIPs = "0.0.0.0/0",
-                peerPersistentKeepalive = "25",
-                jc = "0", jmin = "0", jmax = "0",
-                s1 = "0", s2 = "0",
-                h1 = "0", h2 = "0", h3 = "0", h4 = "0"
+                name = "WARP",
+                peerAllowedIPs = "0.0.0.0/0"
             ))
             repeat(5) { index ->
                 servers.add(ServerInfo(
@@ -190,6 +183,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun loadEmbeddedServer(): ServerInfo? {
+        return try {
+            val text = assets.open("warp.conf").bufferedReader().use { it.readText() }
+            WgConfigParser.parse(text)?.copy(id = "slot_0", name = "WARP")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     private fun setupRecyclerView() {
         serverAdapter = ServerAdapter(
             servers,
@@ -204,14 +207,15 @@ class MainActivity : AppCompatActivity() {
             onStopClick = { _ ->
                 vpnManager.disconnect()
             },
-            onAddClick = { server, position ->
-                showAddServerDialog(server, position)
+            onAddClick = { _, _ ->
+                // Тестовая сборка: добавление новых конфигов заблокировано
+                Toast.makeText(this, "Добавление конфигов недоступно в этой сборке", Toast.LENGTH_SHORT).show()
             },
             onLongPress = { server, position ->
                 if (hasValidConfig(server)) {
                     showEditServerDialog(server, position)
                 } else {
-                    showAddServerDialog(server, position)
+                    Toast.makeText(this, "Добавление конфигов недоступно в этой сборке", Toast.LENGTH_SHORT).show()
                 }
             }
         )
