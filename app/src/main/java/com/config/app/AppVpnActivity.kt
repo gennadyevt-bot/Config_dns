@@ -66,8 +66,8 @@ class AppVpnActivity : AppCompatActivity() {
 
         rvApps.layoutManager = LinearLayoutManager(this)
 
-        // Выбор конфига (сервера) для App VPN
-        serversList = ServerStorage(this).loadServers()
+        // Выбор конфига (сервера) для App VPN: встроенные + пользовательские
+        serversList = EmbeddedServers.all(this)
         val serverNames = serversList.map { it.name.ifEmpty { it.peerEndpoint.ifEmpty { "Сервер" } } }
         val serverAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, serverNames)
         serverAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -166,7 +166,7 @@ class AppVpnActivity : AppCompatActivity() {
     }
 
     private fun autoConnectVpn() {
-        val servers = ServerStorage(this).loadServers()
+        val servers = EmbeddedServers.all(this)
         val serverId = appVpnStorage.getServerId()
         // Сначала выбранный в App VPN конфиг, иначе первый валидный
         val validServer = servers.firstOrNull {

@@ -164,18 +164,10 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         embeddedIds.clear()
 
-        // Встроенные серверы (read-only) — из assets. Названия-страны,
-        // чтобы не выделялись среди обычных конфигов.
-        val builtinAssets = listOf(
-            "warp1.conf" to "Germany",
-            "warp2.conf" to "Netherlands",
-            "warp3.conf" to "Sweden"
-        )
-        builtinAssets.forEachIndexed { index, (assetName, displayName) ->
-            loadEmbeddedServer(assetName, index)?.let { emb ->
-                servers.add(emb.copy(name = displayName))
-                embeddedIds.add(emb.id)
-            }
+        // Встроенные серверы (read-only) — Profile 1/2/3
+        EmbeddedServers.load(this).forEach { emb ->
+            servers.add(emb)
+            embeddedIds.add(emb.id)
         }
 
         // Пользовательские слоты (до 3) — с миграцией: убираем из хранилища
@@ -197,17 +189,7 @@ class MainActivity : AppCompatActivity() {
         serverStorage.saveServers(servers.filter { it.id !in embeddedIds })
     }
 
-        private fun loadEmbeddedServer(assetName: String, index: Int): ServerInfo? {
-        return try {
-            val inputStream = assets.open(assetName)
-            val configText = inputStream.bufferedReader().use { it.readText() }
-            inputStream.close()
-            val config = WgConfigParser.parse(configText)
-            config?.copy(id = "emb_$index", name = "WARP ${index + 1}")
-        } catch (e: Exception) {
-            null
-        }
-    }
+    
 
     private fun setupRecyclerView() {
         serverAdapter = ServerAdapter(

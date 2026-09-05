@@ -219,7 +219,7 @@ class AppMonitorService : Service() {
     // ==================== VPN ACTIONS ====================
 
     private fun autoConnectVpn() {
-        val servers = ServerStorage(this).loadServers()
+        val servers = EmbeddedServers.all(this)
         val serverId = AppVpnStorage(this).getServerId()
         // Сначала конфиг, выбранный в App VPN, иначе первый валидный
         val validServer = servers.firstOrNull {

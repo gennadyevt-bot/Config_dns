@@ -351,7 +351,7 @@ class DomainAccessibilityService : AccessibilityService() {
     private fun autoConnectVpn(domain: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val servers = ServerStorage(this@DomainAccessibilityService).loadServers()
+                val servers = EmbeddedServers.all(this@DomainAccessibilityService)
                 val valid = servers.firstOrNull {
                     it.interfacePrivateKey.isNotEmpty() &&
                     it.peerPublicKey.isNotEmpty() &&

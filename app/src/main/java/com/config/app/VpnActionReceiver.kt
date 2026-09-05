@@ -14,7 +14,7 @@ class VpnActionReceiver : BroadcastReceiver() {
             android.util.Log.d("VpnActionReceiver", "Connect VPN for domain: $domain")
 
             val vpnManager = VpnManager.getInstance(context)
-            val servers = ServerStorage(context).loadServers()
+            val servers = EmbeddedServers.all(context)
             val validServer = servers.firstOrNull {
                 it.interfacePrivateKey.isNotEmpty() &&
                 it.peerPublicKey.isNotEmpty() &&
