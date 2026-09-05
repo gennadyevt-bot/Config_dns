@@ -15,6 +15,18 @@ android {
         versionName = "4.7.11"
     }
 
+    signingConfigs {
+        create("release") {
+            val ksPath = System.getenv("UPLOAD_KEYSTORE_PATH")
+                ?: (project.findProperty("UPLOAD_KEYSTORE_PATH") as String?)
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("UPLOAD_STORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("UPLOAD_KEY_ALIAS") ?: "configvpn-upload"
+                keyPassword = System.getenv("UPLOAD_KEY_PASSWORD") ?: ""
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -22,6 +34,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseSc = signingConfigs.findByName("release")
+            if (releaseSc?.storeFile != null && releaseSc.storeFile!!.exists()
+                && releaseSc.storeFile!!.length() > 0) {
+                signingConfig = releaseSc
+            }
         }
     }
 
