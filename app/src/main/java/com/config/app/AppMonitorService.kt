@@ -281,9 +281,12 @@ class AppMonitorService : Service() {
     // ==================== NOTIFICATION ====================
 
     private fun createNotification(): Notification {
-        val channelId = "app_monitor_channel"
+        // Новый канал с IMPORTANCE_MIN: иконка App VPN не мозолит строку
+        // состояния, уведомление живёт только в шторке (сервис при этом
+        // остаётся foreground — система его не убьёт).
+        val channelId = "app_monitor_channel_v2"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "App VPN Monitor", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "App VPN Monitor", NotificationManager.IMPORTANCE_MIN)
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
         }
