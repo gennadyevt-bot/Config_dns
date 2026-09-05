@@ -164,10 +164,16 @@ class MainActivity : AppCompatActivity() {
         servers.clear()
         embeddedIds.clear()
 
-        // Встроенные серверы (read-only) — из assets
-        listOf("warp1.conf", "warp2.conf", "warp3.conf").forEachIndexed { index, assetName ->
+        // Встроенные серверы (read-only) — из assets. Названия-страны,
+        // чтобы не выделялись среди обычных конфигов.
+        val builtinAssets = listOf(
+            "warp1.conf" to "Germany",
+            "warp2.conf" to "Netherlands",
+            "warp3.conf" to "Sweden"
+        )
+        builtinAssets.forEachIndexed { index, (assetName, displayName) ->
             loadEmbeddedServer(assetName, index)?.let { emb ->
-                servers.add(emb)
+                servers.add(emb.copy(name = displayName))
                 embeddedIds.add(emb.id)
             }
         }
