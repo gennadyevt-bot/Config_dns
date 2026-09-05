@@ -20,6 +20,7 @@ class VpnKeepAliveService : Service() {
         private const val TAG = "VpnKeepAlive"
         private const val NOTIF_ID = 1001
         private const val CHANNEL_ID = "config_vpn_keepalive"
+        private const val CHANNEL_ID_MIN = "config_vpn_keepalive_min"
         private const val CHECK_INTERVAL = 5000L
     }
 
@@ -114,8 +115,21 @@ class VpnKeepAliveService : Service() {
         handler.post(checkRunnable!!)
     }
 
+    private fun appVpnMode(): Boolean {
+        val s = AppVpnStorage(this)
+        return s.isEnabled() && s.getSelectedPackages().isNotEmpty()
+    }
+
     private fun buildNotification(text: String = "Мониторинг VPN подключения"): Notification {
-        createNotificationChannel()
+        val appVpn = appVpnMode()
+        createNotificationChannel(appVpn)
+        val channelId = if (appVpn) CHANNEL_ID_MIN else CHANNEL_ID
+
+        // В режиме App VPN — минимум текста: пользователь просил не показывать
+        // «VPN подключён», когда работает автоматическая маршрутизация по приложениям.
+        val shownText = if (appVpn && vpnManager?.getStatus() == VpnStatus.CONNECTED) {
+            "App VPN работает"
+        } else text
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -125,24 +139,37 @@ class VpnKeepAliveService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Config VPN")
-            .setContentText(text)
+            .setContentText(shownText)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannel(appVpn: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Config VPN Keep-Alive",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Фоновый мониторинг VPN"
-                setShowBadge(false)
+            // Отдельный тихий канал для режима App VPN: IMPORTANCE_MIN —
+            // без иконки в строке состояния, только в шторке.
+            val channel = if (appVpn) {
+                NotificationChannel(
+                    CHANNEL_ID_MIN,
+                    "Config VPN (App VPN)",
+                    NotificationManager.IMPORTANCE_MIN
+                ).apply {
+                    description = "Фоновая работа App VPN"
+                    setShowBadge(false)
+                }
+            } else {
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Config VPN Keep-Alive",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Фоновый мониторинг VPN"
+                    setShowBadge(false)
+                }
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
