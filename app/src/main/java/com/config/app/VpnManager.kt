@@ -249,7 +249,8 @@ class VpnManager private constructor(private val context: Context) {
             val targets = listOf(
                 Triple("1.1.1.1", 443, "интернет"),
                 Triple("149.154.167.50", 443, "Telegram DC1"),
-                Triple("91.108.56.130", 443, "Telegram DC2")
+                Triple("91.108.56.130", 443, "Telegram DC2"),
+                Triple("2001:67c:4e8:f002::a", 443, "Telegram IPv6")
             )
             for ((ip, port, name) in targets) {
                 delay(1200)
@@ -296,16 +297,20 @@ class VpnManager private constructor(private val context: Context) {
     // 1) IPv4: как в конфиге. Telegram в РФ ЗАБЛОКИРОВАН провайдером — его
     //    трафик обязан идти через туннель, исключать DC нельзя (опыт 5.0.3:
     //    «Telegram полностью отказал» — напрямую он умирает в блоке РНК).
-    // 2) IPv6: ::/0 вырезаем (мёртвый/медленный v6-канал WARP), остальные
-    //    v6-маршруты — только если на интерфейсе есть IPv6-адрес.
-    // 3) Нет IPv6-адреса на интерфейсе — добавляем Telegram-v6-blackhole.
+    // 2) IPv6: ::/0 вырезаем (остальной v6 пусть идёт напрямую), но префиксы
+    //    DC Telegram добавляем ВСЕГДА: иначе клиент пробует v6-DC напрямую,
+    //    провайдер их молча дропает (~1 мин таймаута), и только потом клиент
+    //    падает на IPv4 (который через туннель идёт за 12 мс — замерено).
+    //    Есть v6-адрес на интерфейсе → DC-v6 реально ходит через WARP;
+    //    нет адреса → пакеты умирают мгновенно (fast-fail) и клиент сразу
+    //    идёт по IPv4.
     private fun buildAllowedIPs(server: ServerInfo): String {
         val v6addr = hasIPv6Address(server.interfaceAddress)
         val entries = server.peerAllowedIPs.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         val out = mutableListOf<String>()
         out.addAll(entries.filter { !it.contains(':') })
         out.addAll(entries.filter { it.contains(':') && v6addr && it != "::/0" })
-        if (!v6addr) out.addAll(telegramV6Blackhole)
+        out.addAll(telegramV6Blackhole)
         if (out.isEmpty()) out.add("0.0.0.0/0")
         return out.joinToString(", ")
     }
