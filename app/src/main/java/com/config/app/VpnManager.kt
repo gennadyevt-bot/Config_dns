@@ -241,19 +241,18 @@ class VpnManager private constructor(private val context: Context) {
     }
 
     // Замер путей после подключения: TCP-connect к 1.1.1.1 (контроль) и к
-    // датацентрам Telegram (149.154.167.50, 91.108.56.130). Показывает тост с
-    // цифрами — по ним видно, где теряется время: туннель до интернета
-    // (1.1.1.1) или именно путь до DC Telegram.
+    // датацентрам Telegram (149.154.167.50, 91.108.56.130). Каждый результат —
+    // ОТДЕЛЬНЫЙ короткий тост (длинный обрезается Android, цифры не видно).
+    // По ним видно, где теряется время: туннель до интернета или путь до DC.
     private fun probePaths() {
         scope.launch {
-            delay(2000)
             val targets = listOf(
                 Triple("1.1.1.1", 443, "интернет"),
-                Triple("149.154.167.50", 443, "Telegram-DC"),
-                Triple("91.108.56.130", 443, "Telegram-DC2")
+                Triple("149.154.167.50", 443, "Telegram DC1"),
+                Triple("91.108.56.130", 443, "Telegram DC2")
             )
-            val sb = StringBuilder("Замер путей:")
             for ((ip, port, name) in targets) {
+                delay(1200)
                 val t0 = System.currentTimeMillis()
                 val ms = try {
                     java.net.Socket().use { s ->
@@ -263,10 +262,10 @@ class VpnManager private constructor(private val context: Context) {
                 } catch (e: Exception) {
                     -1L
                 }
-                sb.append(" $name=").append(if (ms < 0) "нет" else "${ms}мс")
+                val line = if (ms < 0) "$name: нет ответа" else "$name: $ms мс"
+                android.util.Log.d("ConfigVPN", "probe: $line")
+                withContext(Dispatchers.Main) { showToast(line) }
             }
-            android.util.Log.d("ConfigVPN", sb.toString())
-            withContext(Dispatchers.Main) { showToast(sb.toString()) }
         }
     }
 
