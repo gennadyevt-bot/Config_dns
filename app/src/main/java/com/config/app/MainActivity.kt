@@ -124,6 +124,8 @@ class MainActivity : AppCompatActivity() {
                 R.id.navBackup -> showBackupDialog()
                 R.id.navAutoConnect -> showAutoConnectDialog()
                 R.id.navGuide -> startActivity(android.content.Intent(this, com.config.app.GuideActivity::class.java))
+                R.id.navOwnServer -> com.config.app.OwnServerSetup.show(this, serverStorage) { loadServers() }
+                R.id.navCloudUpdate -> com.config.app.CloudServers.update(this, serverStorage) { loadServers() }
                 R.id.navAbout -> Toast.makeText(this, "Config VPN v5.0 | WireGuard + AmneziaWG | 3 встроенных сервера", Toast.LENGTH_LONG).show()
             }
             drawerLayout.closeDrawer(GravityCompat.START)
