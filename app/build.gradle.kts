@@ -39,6 +39,10 @@ android {
         }
     }
 
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
 }
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
