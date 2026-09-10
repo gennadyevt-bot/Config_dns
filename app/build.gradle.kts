@@ -49,5 +49,5 @@ dependencies {
     implementation("androidx.drawerlayout:drawerlayout:1.2.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.zxing:core:3.5.3")
-    implementation("com.github.mwiede:jsch:2.18.0")
+    implementation("com.jcraft:jsch:0.1.55")
 }
