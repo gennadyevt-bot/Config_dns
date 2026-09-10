@@ -40,12 +40,13 @@ android {
     }
 
 
+}
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
     }
 }
-}
+
 dependencies {
 
     implementation("com.zaneschepke:amneziawg-android:2.3.7")
