@@ -45,6 +45,12 @@ android {
     }
 }
 dependencies {
+
+configurations.all {
+    resolutionStrategy {
+        force("androidx.core:core-ktx:1.13.1")
+    }
+}
     implementation("com.zaneschepke:amneziawg-android:2.3.7")
     implementation("com.wireguard.android:tunnel:1.0.20260102")
     implementation("androidx.core:core-ktx:1.13.1")
