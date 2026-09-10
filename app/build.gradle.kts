@@ -45,7 +45,8 @@ android {
     }
 }
 dependencies {
-    implementation("com.wireguard.android:wireguard-android:1.0.20230706")
+    implementation("com.zaneschepke:amneziawg-android:2.3.7")
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
