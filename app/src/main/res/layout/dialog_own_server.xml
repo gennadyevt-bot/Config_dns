@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="20dp">
+    <EditText android:id="@+id/etHost" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="IP-адрес сервера"/>
+    <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Порт SSH" android:inputType="number"/>
+    <EditText android:id="@+id/etUser" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Логин"/>
+    <EditText android:id="@+id/etPass" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Пароль" android:inputType="textPassword"/>
+</LinearLayout>
