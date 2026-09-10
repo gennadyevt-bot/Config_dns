@@ -19,7 +19,7 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: '8.7'
+        gradle-version: '8.10.2'
     - name: Build with Gradle
       run: gradle assembleDebug
     - name: Upload APK
@@ -41,7 +41,7 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: '8.7'
+        gradle-version: '8.10.2'
     - name: Decode upload keystore (если задан секрет)
       run: |
         if [ -n "${{ secrets.UPLOAD_KEYSTORE_BASE64 }}" ]; then
