@@ -75,15 +75,16 @@ object OwnServerSetup {
             peerAllowedIPs = v("AllowedIPs").ifEmpty { "0.0.0.0/0" },
             peerEndpoint = v("Endpoint"),
             peerPersistentKeepalive = v("PersistentKeepalive").ifEmpty { "25" },
-            jc = v("Jc").ifEmpty { "5" },
-            jmin = v("Jmin").ifEmpty { "50" },
-            jmax = v("Jmax").ifEmpty { "1000" },
-            s1 = v("S1").ifEmpty { "50" },
-            s2 = v("S2").ifEmpty { "100" },
-            h1 = v("H1").ifEmpty { "1" },
-            h2 = v("H2").ifEmpty { "2" },
-            h3 = v("H3").ifEmpty { "3" },
-            h4 = v("H4").ifEmpty { "4" }
+            // Missing AWG parameters mean plain WireGuard; preserve explicit values.
+            jc = v("Jc").ifEmpty { "0" },
+            jmin = v("Jmin").ifEmpty { "0" },
+            jmax = v("Jmax").ifEmpty { "0" },
+            s1 = v("S1").ifEmpty { "0" },
+            s2 = v("S2").ifEmpty { "0" },
+            h1 = v("H1").ifEmpty { "0" },
+            h2 = v("H2").ifEmpty { "0" },
+            h3 = v("H3").ifEmpty { "0" },
+            h4 = v("H4").ifEmpty { "0" }
         )
     }
 
