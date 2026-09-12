@@ -572,15 +572,6 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Share") { _, _ ->
                 backupManager.shareBackup()
             }
-            .setNeutralButton("Очистить") { _, _ ->
-                fun clearAll(v: android.view.View) {
-                    when (v) {
-                        is android.widget.EditText -> v.setText("")
-                        is android.view.ViewGroup -> for (i in 0 until v.childCount) clearAll(v.getChildAt(i))
-                    }
-                }
-                clearAll(view)
-            }
             .setNegativeButton("Cancel", null)
             .show()
     }
