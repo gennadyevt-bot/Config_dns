@@ -42,6 +42,14 @@ class VpnManager private constructor(private val context: Context) {
     private var currentServer: ServerInfo? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    private fun dbg(msg: String) {
+        try {
+            val f = java.io.File(context.filesDir, "debug.log")
+            f.appendText(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date()) + " " + msg + "\n")
+            if (f.length() > 200000) f.writeText(f.readText().takeLast(100000))
+        } catch (_: Exception) {}
+    }
+
     companion object {
         var globalStatus: VpnStatus = VpnStatus.DISCONNECTED
 
@@ -100,6 +108,7 @@ class VpnManager private constructor(private val context: Context) {
                 // Конфиг с junk-параметрами (AmneziaWG) идёт через AWG-бэкенд —
                 // он обходит DPI РНК. Обычные конфиги — через WireGuard с App VPN.
                 val wantsAwg = server.jc.isNotEmpty() && server.jc != "0"
+0
                 if (wantsAwg) {
                     connectAwg(server, includedApps)
                 } else {
@@ -136,6 +145,7 @@ class VpnManager private constructor(private val context: Context) {
             val t0 = System.currentTimeMillis()
             wgBackend.setState(tunnel, WgBackendTunnel.State.UP, config)
             android.util.Log.d("ConfigVPN", "WG handshake: ${System.currentTimeMillis() - t0} ms")
+            dbg("WG up: " + (System.currentTimeMillis() - t0) + " ms")
         } catch (e: Exception) {
             if (includedApps.isNotEmpty()) {
                 android.util.Log.w("ConfigVPN", "Backend failed with IncludedApplications, retrying without...", e)
@@ -159,6 +169,7 @@ class VpnManager private constructor(private val context: Context) {
         try {
             val configString = buildConfigString(server, includedApps, withAwg = true)
             android.util.Log.d("ConfigVPN", "AWG config: $configString")
+            dbg("AWG config: " + configString.replace("\n", " | "))
 
             val config = AwgConfig.parse(ByteArrayInputStream(configString.toByteArray()))
             currentAwgConfig = config
@@ -175,6 +186,7 @@ class VpnManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             // Фолбэк: сервер не принял junk-параметры — пробуем обычный WireGuard
             android.util.Log.w("ConfigVPN", "AWG failed, falling back to plain WireGuard", e)
+            dbg("AWG FAILED: " + (e.stackTraceToString() ?: e.toString()).take(1500))
             connectWg(server, includedApps)
         }
     }
