@@ -440,6 +440,15 @@ class MainActivity : AppCompatActivity() {
                 serverAdapter.notifyItemChanged(position)
                 Toast.makeText(this, "Config added", Toast.LENGTH_SHORT).show()
             }
+            .setNeutralButton("Очистить") { _, _ ->
+                fun clearAll(v: android.view.View) {
+                    when (v) {
+                        is android.widget.EditText -> v.setText("")
+                        is android.view.ViewGroup -> for (i in 0 until v.childCount) clearAll(v.getChildAt(i))
+                    }
+                }
+                clearAll(view)
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -520,6 +529,15 @@ class MainActivity : AppCompatActivity() {
                 serverAdapter.notifyItemChanged(position)
                 Toast.makeText(this, "Config updated", Toast.LENGTH_SHORT).show()
             }
+            .setNeutralButton("Очистить") { _, _ ->
+                fun clearAll(v: android.view.View) {
+                    when (v) {
+                        is android.widget.EditText -> v.setText("")
+                        is android.view.ViewGroup -> for (i in 0 until v.childCount) clearAll(v.getChildAt(i))
+                    }
+                }
+                clearAll(view)
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -553,6 +571,15 @@ class MainActivity : AppCompatActivity() {
             .setMessage("Share all configs as JSON file?")
             .setPositiveButton("Share") { _, _ ->
                 backupManager.shareBackup()
+            }
+            .setNeutralButton("Очистить") { _, _ ->
+                fun clearAll(v: android.view.View) {
+                    when (v) {
+                        is android.widget.EditText -> v.setText("")
+                        is android.view.ViewGroup -> for (i in 0 until v.childCount) clearAll(v.getChildAt(i))
+                    }
+                }
+                clearAll(view)
             }
             .setNegativeButton("Cancel", null)
             .show()
